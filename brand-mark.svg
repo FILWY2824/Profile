@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Qishu brand mark</title>
+  <desc id="desc">A sheltered hub mark inspired by the idea of Qi and Shu.</desc>
+  <defs>
+    <linearGradient id="panel" x1="28" y1="22" x2="220" y2="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f9fcff" />
+      <stop offset="0.48" stop-color="#edf4ff" />
+      <stop offset="1" stop-color="#fff1e2" />
+    </linearGradient>
+    <linearGradient id="accent" x1="56" y1="48" x2="194" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6fb6ff" />
+      <stop offset="0.55" stop-color="#8693ff" />
+      <stop offset="1" stop-color="#ffb06c" />
+    </linearGradient>
+    <linearGradient id="shine" x1="44" y1="38" x2="176" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.94" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.16" />
+    </linearGradient>
+  </defs>
+
+  <rect x="18" y="18" width="220" height="220" rx="58" fill="url(#panel)" />
+  <rect x="18" y="18" width="220" height="220" rx="58" fill="none" stroke="#ffffff" stroke-opacity="0.8" />
+  <path d="M40 42c24-12 60-14 96 0s62 18 96 10v60c-28 10-58 4-92-8s-70-12-100 2z" fill="url(#shine)" />
+  <circle cx="84" cy="82" r="21" fill="#ffffff" fill-opacity="0.5" />
+  <circle cx="184" cy="180" r="18" fill="#ffffff" fill-opacity="0.28" />
+
+  <path
+    d="M62 94c16-15 35-30 66-42 31 12 50 27 66 42"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="16"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M90 182h76"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="14"
+    stroke-linecap="round"
+  />
+  <path
+    d="M128 88v78"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="12"
+    stroke-linecap="round"
+  />
+  <path
+    d="M128 132H92M128 132h36M128 132l-24 28M128 132l24 28"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <circle cx="128" cy="132" r="16" fill="#ffffff" />
+  <circle cx="128" cy="132" r="7" fill="url(#accent)" />
+  <circle cx="128" cy="88" r="9" fill="#ffffff" />
+  <circle cx="92" cy="132" r="9" fill="#ffffff" />
+  <circle cx="164" cy="132" r="9" fill="#ffffff" />
+  <circle cx="104" cy="160" r="9" fill="#ffffff" />
+  <circle cx="152" cy="160" r="9" fill="#ffffff" />
+</svg>
