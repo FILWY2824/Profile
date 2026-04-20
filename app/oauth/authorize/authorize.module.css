@@ -1,0 +1,205 @@
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(201,98,47,0.05), transparent 40%),
+    radial-gradient(circle at 80% 100%, rgba(201,98,47,0.04), transparent 40%),
+    linear-gradient(180deg, #faf8f5 0%, #f4eee5 100%);
+  display: flex; flex-direction: column;
+  background-image:
+    linear-gradient(rgba(107,95,87,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(107,95,87,0.05) 1px, transparent 1px),
+    radial-gradient(circle at 20% 0%, rgba(201,98,47,0.05), transparent 40%),
+    radial-gradient(circle at 80% 100%, rgba(201,98,47,0.04), transparent 40%),
+    linear-gradient(180deg, #faf8f5 0%, #f4eee5 100%);
+  background-size: 32px 32px, 32px 32px, auto, auto, auto;
+}
+.center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 60px 0; }
+
+.topbar {
+  padding: 16px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.brand { display: flex; align-items: center; gap: 8px; }
+.brandDot {
+  width: 22px; height: 22px; border-radius: 7px;
+  background: var(--amber);
+  box-shadow: 0 2px 6px rgba(201,98,47,0.3);
+}
+.brandText {
+  font-family: var(--font-serif);
+  font-weight: 600; color: var(--ink); font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.main {
+  flex: 1;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 20px 60px;
+}
+.box {
+  width: 100%;
+  max-width: 540px;
+}
+
+/* Hero */
+.hero { text-align: center; padding: 24px 0 28px; }
+.heroIconWrap {
+  width: 84px; height: 84px;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+  background: #efe9e0;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.04);
+}
+.heroIcon { width: 36px; height: 36px; }
+.title {
+  font-family: var(--font-serif);
+  font-size: 1.9rem; font-weight: 700;
+  color: var(--ink); letter-spacing: -0.02em;
+  margin: 0 0 6px;
+}
+.subtitle { color: var(--ink-3); font-size: 0.92rem; }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+}
+.cardLabel {
+  font-size: 0.78rem;
+  color: var(--ink-3);
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+/* User row */
+.userRow { display: flex; align-items: center; gap: 12px; }
+.userAvatarImg,
+.userAvatarLetter {
+  width: 40px; height: 40px; border-radius: 10px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.userAvatarLetter {
+  background: var(--amber);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-serif);
+  font-weight: 700; font-size: 1.05rem;
+}
+.userInfo { min-width: 0; }
+.userName {
+  font-weight: 600; color: var(--ink);
+  font-size: 0.98rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.userSub {
+  color: var(--ink-3); font-size: 0.8rem;
+  margin-top: 2px;
+}
+.userHandle { color: var(--ink-2); font-weight: 500; }
+
+/* App logo (小版本用于 client meta; 当前 hero 用锁,保留这些用于兜底扩展) */
+.appLogoImg,
+.appLogoLetter {
+  width: 40px; height: 40px; border-radius: 10px;
+  flex-shrink: 0; object-fit: cover;
+}
+.appLogoLetter {
+  background: var(--ink); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-serif);
+  font-weight: 700; font-size: 1.05rem;
+}
+
+/* Meta rows (app info) */
+.metaRow {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.875rem; color: var(--ink-2);
+  padding: 6px 0;
+}
+.metaRow svg { color: var(--ink-3); flex-shrink: 0; }
+.metaLink { color: var(--amber); text-decoration: none; }
+.metaLink:hover { text-decoration: underline; }
+.metaMuted { color: var(--ink-3); }
+
+/* Scope row (expandable) */
+.scopeRow {
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 6px;
+  background: transparent; border: none; cursor: pointer;
+  text-align: left; color: var(--ink);
+  font-size: 0.92rem; font-family: inherit;
+}
+.scopeRow:hover { background: var(--mist); border-radius: 8px; }
+.scopeRow svg { color: var(--ink-3); flex-shrink: 0; }
+.scopeLabel { flex: 1; }
+.scopeCaret {
+  color: var(--ink-3);
+  transition: transform 0.2s ease;
+  font-size: 1rem;
+}
+.scopeCaretOpen { transform: rotate(180deg); }
+.scopeDetail {
+  padding: 10px 6px 2px 40px;
+  color: var(--ink-3); font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* Actions */
+.actions {
+  margin-top: 18px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.btn {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 0.98rem; font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+.btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.btnPrimary {
+  background: var(--ink);
+  color: #fff;
+}
+.btnPrimary:hover:not(:disabled) {
+  background: #000;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+}
+.btnGhost {
+  background: var(--surface);
+  color: var(--ink-2);
+  border-color: var(--border);
+}
+.btnGhost:hover:not(:disabled) {
+  background: var(--mist);
+  color: var(--ink);
+}
+
+.notice {
+  text-align: center;
+  margin-top: 18px;
+  color: var(--ink-3); font-size: 0.78rem;
+  line-height: 1.6;
+}
+.notice strong { color: var(--ink-2); }
+
+@media (max-width: 560px) {
+  .box { max-width: 100%; }
+  .title { font-size: 1.55rem; }
+  .heroIconWrap { width: 72px; height: 72px; border-radius: 20px; }
+  .heroIcon { width: 30px; height: 30px; }
+}
