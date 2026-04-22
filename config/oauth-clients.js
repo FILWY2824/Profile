@@ -49,8 +49,8 @@ export const STATIC_OAUTH_CLIENTS = [
     //   • 之前还有一条 http://localhost:3001/callback 已经删掉,避免给未使用的端
     //     口留白名单。
     redirectUris: [
-      'http://localhost:3000/api/auth/oauth/callback',
-      'http://localhost:3000/callback',
+      'https://qishu.corecy.eu.cc/api/auth/oauth/callback',
+      'https://qishu.corecy.eu.cc/callback',
       // 'https://profile.example.com/api/auth/oauth/callback',  // ← 生产部署时打开并改成你的域名
     ],
     scopes: ['openid', 'profile', 'email'],

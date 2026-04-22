@@ -1,4 +1,9 @@
 'use client';
+// ============================================================================
+// 项目内路径: app/auth/login/page.js
+// 文件名:     page.js
+// ============================================================================
+
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -9,6 +14,32 @@ import PasswordInput from '@/components/ui/PasswordInput.js';
 import TurnstileWidget, { useTurnstile } from '@/components/ui/TurnstileWidget.js';
 
 /**
+ * 把 URL 里的 redirect 参数收窄成"必须是本站内相对路径"。
+ *
+ * 攻击面:如果直接 router.push(searchParams.get('redirect')),
+ * 攻击者构造 /auth/login?redirect=https://evil.com/fake-qishu 之后发给受害者,
+ * 登录成功后受害者被跳到钓鱼站,整个登录态接着可能在那里被骗去输二次验证等。
+ *
+ * 规则:
+ *   • 必须以 '/' 开头,且不能以 '//' 开头(后者是 protocol-relative URL,
+ *     浏览器会跳到外站)。
+ *   • 不能包含 '\\'(IE/旧浏览器会把反斜杠当路径分隔,解析歧义)。
+ *   • 不能包含协议前缀。
+ *   • 解码后仍需通过上述规则(防止 %2f%2f 这类绕过)。
+ * 不通过时回落到 '/'。
+ */
+function safeRedirect(raw) {
+  if (!raw || typeof raw !== 'string') return '/';
+  let r = raw.trim();
+  try { r = decodeURIComponent(r); } catch { /* 解码失败就用原串 */ }
+  if (!r.startsWith('/')) return '/';
+  if (r.startsWith('//')) return '/';
+  if (r.startsWith('/\\') || r.includes('\\')) return '/';
+  if (/^\/*[a-z][a-z0-9+.-]*:/i.test(r)) return '/';   // 带 scheme
+  return r;
+}
+
+/**
  * 登录页。Turnstile 相关的 widget 与 hook 已被抽到
  * components/ui/TurnstileWidget.js,注册页 / 找回密码页共用同一套。
  */
@@ -16,7 +47,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = safeRedirect(searchParams.get('redirect'));
   const justRegistered = searchParams.get('registered') === '1';
   const reason = searchParams.get('reason') || '';
   const [form, setForm] = useState({
