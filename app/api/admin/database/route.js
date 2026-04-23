@@ -2,12 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth.js';
 import { database } from '@/lib/database.js';
 
-/**
- * GET /api/admin/database
- * 返回 SQLite 中所有用户表的概览:名字 / 行数 / 列定义 / 索引数量。
- * 供后台数据库可视化页面使用。不返回 sqlite_* 内部表。
- */
-const HIDDEN = new Set(['sqlite_sequence', 'sqlite_stat1', '_meta']);
+const HIDDEN = new Set(['sqlite_sequence', 'sqlite_stat1', '_meta', 'backup_jobs']);
 
 export async function GET() {
   const auth = await requireAdmin();

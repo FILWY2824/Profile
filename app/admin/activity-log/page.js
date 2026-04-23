@@ -24,7 +24,6 @@ const ACTION_LABELS = {
   'admin.card_update':       { label: '编辑卡片',     type: 'blue'  },
   'admin.card_delete':       { label: '删除卡片',     type: 'red'   },
   'admin.settings_update':   { label: '修改配置',     type: 'amber' },
-  'admin.settings_reveal':   { label: '查看敏感配置', type: 'amber' },
   'admin.retention_prune':   { label: '数据清理',     type: 'red'   },
   'admin.favicon_refresh':       { label: '刷新图标',     type: 'blue' },
   'admin.favicon_refresh_all':   { label: '全量刷新图标', type: 'blue' },

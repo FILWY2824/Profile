@@ -18,7 +18,6 @@ const NAV = [
   { href:'/admin/retention',     label:'数据清理', icon:'♺' },
   { href:'/admin/settings',      label:'平台配置', icon:'⚙' },
   { href:'/admin/database',      label:'数据库',   icon:'▥' },
-  { href:'/admin/backup',        label:'数据库备份', icon:'⇪' },
 ];
 
 export default function AdminLayout({ children }) {
@@ -46,7 +45,9 @@ export default function AdminLayout({ children }) {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
       window.location.assign('/');
-    } catch { toast.error('退出登录失败'); }
+    } catch {
+      toast.error('退出登录失败');
+    }
   }
 
   if (checking) return (

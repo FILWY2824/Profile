@@ -1,15 +1,11 @@
 /**
- * rateLimit.test.js —— 滑动窗口速率限制回归测试
- *
- * 之前在 lib/rateLimit.js 里改动过边界判断的 while 循环,这里固化预期行为
- * 防止将来把"允许第 N 次 but 不允许第 N+1 次"写成 off-by-one。
+ * rateLimit.test.js —— 常量内存限流回归测试
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rateLimit } from '../lib/rateLimit.js';
+import { rateLimit, getClientIp } from '../lib/rateLimit.js';
 
 test('rateLimit: 窗口内允许 max 次,之后拒绝', () => {
-  // 用唯一 scope 防与其他测试冲突(buckets 是模块级 Map,测试间共享)
   const scope = `test-rl-basic-${Date.now()}`;
   const id = '1.2.3.4';
   const opts = { max: 3, windowMs: 60_000 };
@@ -53,4 +49,21 @@ test('rateLimit: 不同 scope 互相隔离', () => {
 
   assert.equal(a1.allowed, true);
   assert.equal(b1.allowed, true, '不同 scope 应当各自计数');
+});
+
+test('getClientIp: 优先 x-real-ip,其次 x-forwarded-for 中首个合法 IP', () => {
+  const requestA = {
+    headers: new Headers({
+      'x-real-ip': '203.0.113.10',
+      'x-forwarded-for': '198.51.100.3, 198.51.100.4',
+    }),
+  };
+  assert.equal(getClientIp(requestA), '203.0.113.10');
+
+  const requestB = {
+    headers: new Headers({
+      'x-forwarded-for': 'garbage, 198.51.100.4, 198.51.100.5',
+    }),
+  };
+  assert.equal(getClientIp(requestB), '198.51.100.4');
 });

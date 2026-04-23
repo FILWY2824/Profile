@@ -21,7 +21,7 @@ const ACTION_LABELS = {
   'admin.user_ban': '封禁用户', 'admin.user_unban': '解封用户',
   'admin.reset_password': '重置密码', 'admin.user_update': '更新用户',
   'admin.user_delete': '删除用户',
-  'admin.settings_update': '更新配置', 'admin.settings_reveal': '查看敏感配置',
+  'admin.settings_update': '更新配置',
   'admin.retention_prune': '数据清理',
 };
 
