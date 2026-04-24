@@ -8,27 +8,20 @@
  *   1) 不再包含任何真实资源的 URL
  *   2) 在 NODE_ENV=production 下硬性拒绝执行(需 --i-accept-risk 才能越过)
  *   3) 不再在自己内部实现 seed 逻辑 —— 全部转发给 dev-seed.js
- *
- * 这样做的好处:
- *   • 旧的 `npm run reseed` 和 `node scripts/reseed-cards.js` 仍然可用,习惯
- *     动作不需要改;
- *   • 真实 seed 改动集中在 dev-seed.js 一处,不会再出现"两个 seed 脚本各写
- *     一套数据 → 其中一个没跟着改 → 行为不一致"的情况
+ *   4) 不再 spawn 子进程 —— 直接动态 import dev-seed.js。这样整个进程里
+ *      只有一个 node 实例,栈更浅、不依赖 child_process,并且沙盒 / SELinux /
+ *      AppArmor 策略更容易限制(Kinsing 类挖矿木马的典型特征就是"被合法进程
+ *      spawn 出子进程",减少我们自己的 spawn 调用有助于安全审计区分)。
  * ---------------------------------------------------------------------------
  */
-import { spawnSync } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
+console.log('ℹ️  reseed-cards.js 已被替换为 dev-seed.js 的薄包装 —— 直接转发。');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const args = process.argv.slice(2);
-const devSeed = path.join(__dirname, 'dev-seed.js');
-
-console.log('ℹ️  reseed-cards.js 已被替换为 dev-seed.js 的薄包装 —— 直接转发参数。');
-
-const result = spawnSync(process.execPath, [devSeed, ...args], {
-  stdio: 'inherit',
-});
-process.exit(result.status ?? 1);
+// dev-seed.js 是顶层脚本(不是导出函数),它的所有逻辑在模块加载阶段执行,
+// 并且自己读 process.argv。我们这里以 reseed-cards.js 启动 node,process.argv
+// 保持不变,dev-seed.js 拿到的 argv 跟直接调用它时一致。
+try {
+  await import('./dev-seed.js');
+} catch (err) {
+  console.error('\n❌ dev-seed 执行失败:', err?.message || err);
+  process.exit(1);
+}

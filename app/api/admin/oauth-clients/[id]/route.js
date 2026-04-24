@@ -6,6 +6,8 @@ import { database } from '@/lib/database.js';
 import { hashPassword } from '@/lib/password.js';
 import { activityLog } from '@/lib/fileStore.js';
 import { getClientIp } from '@/lib/rateLimit.js';
+import { sanitizeHttpUrlOrEmpty } from '@/lib/urlSafe.js';
+import { validateContentField } from '@/lib/contentLimits.js';
 
 /**
  * GET    /api/admin/oauth-clients/[id]           — 单个动态客户端详情(静态返回 400)
@@ -136,17 +138,19 @@ export async function PATCH(request, { params }) {
     const updates = {};
 
     if (body.name !== undefined) {
-      const n = String(body.name).trim();
-      if (!n || n.length > 100) errors.push({ field: 'name', message: '显示名称为必填,不超过 100 字' });
-      else updates.name = n;
+      const nameCheck = validateContentField('name', body.name);
+      if (!nameCheck.valid) errors.push({ field: 'name', message: nameCheck.message });
+      else updates.name = nameCheck.value;
     }
     if (body.description !== undefined) {
-      const d = String(body.description).trim();
-      if (d.length > 500) errors.push({ field: 'description', message: '描述不超过 500 字' });
-      else updates.description = d;
+      const descCheck = validateContentField('description', body.description);
+      if (!descCheck.valid) errors.push({ field: 'description', message: descCheck.message });
+      else updates.description = descCheck.value;
     }
-    if (body.homepageUrl !== undefined) updates.homepageUrl = String(body.homepageUrl).trim();
-    if (body.logoUrl !== undefined)     updates.logoUrl     = String(body.logoUrl).trim();
+    // H5:homepageUrl / logoUrl 一定要过 scheme 守卫 —— 未通过时落库空字符串,
+    // 而不是报错阻止提交(非必填字段,配合前端"未提供链接"的回退更稳)。
+    if (body.homepageUrl !== undefined) updates.homepageUrl = sanitizeHttpUrlOrEmpty(body.homepageUrl);
+    if (body.logoUrl !== undefined)     updates.logoUrl     = sanitizeHttpUrlOrEmpty(body.logoUrl);
 
     if (body.minLevel !== undefined) {
       const lvl = Number(body.minLevel);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth.js';
 import { db } from '@/lib/db.js';
+import { validateContentField } from '@/lib/contentLimits.js';
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -24,15 +25,20 @@ export async function POST(request) {
   try {
     const { name, slug, description, order } = await request.json();
 
-    if (!name || !slug) {
-      return NextResponse.json({ error: '名称和 slug 均为必填' }, { status: 400 });
+    const nameCheck = validateContentField('name', name);
+    if (!nameCheck.valid) {
+      return NextResponse.json({ error: nameCheck.message }, { status: 400 });
+    }
+    const slugCheck = validateContentField('slug', slug);
+    if (!slugCheck.valid) {
+      return NextResponse.json({ error: slugCheck.message }, { status: 400 });
+    }
+    const descCheck = validateContentField('description', description ?? '');
+    if (!descCheck.valid) {
+      return NextResponse.json({ error: descCheck.message }, { status: 400 });
     }
 
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      return NextResponse.json({ error: 'slug 只能包含小写字母、数字和连字符' }, { status: 400 });
-    }
-
-    const existing = db.findOne('sections', { slug });
+    const existing = db.findOne('sections', { slug: slugCheck.value });
     if (existing) {
       return NextResponse.json({ error: '该 slug 已存在' }, { status: 409 });
     }
@@ -41,14 +47,14 @@ export async function POST(request) {
     const maxOrder = sections.length > 0 ? Math.max(...sections.map(s => s.order || 0)) : 0;
 
     const section = db.insert('sections', {
-      name: name.trim(),
-      slug,
-      description: description?.trim() || '',
+      name: nameCheck.value,
+      slug: slugCheck.value,
+      description: descCheck.value,
       order: order || maxOrder + 1,
     });
 
     return NextResponse.json({ success: true, section }, { status: 201 });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: '服务器错误' }, { status: 500 });
   }
 }

@@ -6,6 +6,8 @@ import { hashPassword } from '@/lib/password.js';
 import { listOAuthClients } from '@/lib/oauthClients.js';
 import { activityLog } from '@/lib/fileStore.js';
 import { getClientIp } from '@/lib/rateLimit.js';
+import { sanitizeHttpUrlOrEmpty } from '@/lib/urlSafe.js';
+import { validateContentField } from '@/lib/contentLimits.js';
 
 /**
  * GET  /api/admin/oauth-clients         — 列出全部客户端(静态 + 动态合并)
@@ -61,10 +63,9 @@ function validateCreateBody(body) {
     errors.push({ field: 'clientId', message: 'clientId 必须是 3-64 位小写字母/数字/._- 开头必须是字母或数字' });
   }
 
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!name || name.length > 100) {
-    errors.push({ field: 'name', message: '显示名称为必填,不超过 100 字' });
-  }
+  // name / description 走 contentLimits 统一限额(title/description 两档)
+  const nameCheck = validateContentField('name', body.name);
+  if (!nameCheck.valid) errors.push({ field: 'name', message: nameCheck.message });
 
   const redirectUris = Array.isArray(body.redirectUris) ? body.redirectUris : [];
   if (redirectUris.length === 0) {
@@ -90,18 +91,22 @@ function validateCreateBody(body) {
     errors.push({ field: 'minLevel', message: 'minLevel 必须是 0/1/2(user/member/admin)' });
   }
 
-  const description = typeof body.description === 'string' ? body.description.trim() : '';
-  if (description.length > 500) {
-    errors.push({ field: 'description', message: '描述不超过 500 字' });
-  }
+  const descCheck = validateContentField('description', body.description ?? '');
+  if (!descCheck.valid) errors.push({ field: 'description', message: descCheck.message });
 
-  const homepageUrl = typeof body.homepageUrl === 'string' ? body.homepageUrl.trim() : '';
-  const logoUrl     = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : '';
+  // H5:homepageUrl / logoUrl 会被渲染成 <a href={...}> 或 <img src={...}>。
+  // 即使现在业务上"不填"也常见,仍必须守住 scheme —— 允许写入的只能是
+  // http(s)。任何 javascript:/data:/vbscript: 都直接清空。
+  const homepageUrl = sanitizeHttpUrlOrEmpty(body.homepageUrl);
+  const logoUrl     = sanitizeHttpUrlOrEmpty(body.logoUrl);
 
   return {
     errors,
     sanitized: {
-      clientId, name, description, homepageUrl, logoUrl,
+      clientId,
+      name: nameCheck.valid ? nameCheck.value : '',
+      description: descCheck.valid ? descCheck.value : '',
+      homepageUrl, logoUrl,
       minLevel, redirectUris: redirectUris.map(u => u.trim()),
       scopes: Array.from(new Set(scopes)),
     },

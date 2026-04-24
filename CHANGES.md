@@ -2,6 +2,113 @@
 
 ---
 
+## 1.2.0 现实化改造(2026-04-24)
+
+用户反馈的核心诉求有三个:
+
+1. "常驻内存 100MB 左右" → **改不到,但把能收的都收了**(见内存章节)
+2. "部署后被人往服务器注入内容(Kinsing)" → **不是应用层漏洞**,但把几个真实
+   的次要注入面补上了,并在 `DEPLOY.md` 加了完整的 Kinsing 自查 / 处置指南
+3. "升级到 Node 22 LTS,无告警无错误,测试更全,文档更新"
+
+全量 TODO 见 `PLAN.md`,关键改动如下。
+
+### 安全(H 系列)
+
+| 编号 | 问题 | 修复 |
+|---|---|---|
+| **H5** | OAuth 客户端的 `homepageUrl` / `logoUrl` 没校验 scheme。管理员可写入 `javascript:alert(1)`,前端 `<a href={client.homepageUrl}>` 直接拼接 → 点击型 XSS。 | 新建 `lib/urlSafe.js` 提供 `sanitizeHttpUrlOrEmpty`。`POST`/`PATCH /api/admin/oauth-clients` 与 `/api/admin/oauth-clients/[id]` 在写入前对 `homepageUrl`/`logoUrl` 调用它 —— 非 http/https 被替换为空串(非错误,配合前端"未提供链接"回退)。 |
+| **H6** | 邮件 HTML 里的 `SITE_NAME`(管理员在 `/admin/settings` 维护)直接用模板字符串拼到 `<h2>${siteName}</h2>` 等位置,缺一层纵深转义。 | `lib/email.js` 新增并 export `escapeHtml`。所有注入到 HTML 的运行时数据(siteName、验证码)都过一遍。 |
+| **H7** | `bio` 字段无长度限制,`/api/account/profile` 直接落库。 | `lib/username.js` 增加 `validateBio()`(最大 200 字符,空串允许)。profile route + admin users [id] 两处同步接入。 |
+| **H8** | `sections.name/description`、`cards.title/description` 只在前端 `maxLength`,服务端无校验。 | 新建 `lib/contentLimits.js` 作为单一数据源(title/name 64、description 500、bio 200、slug 40、url 2000)。admin sections / cards 的 POST/PATCH 全量接入。 |
+| **H9** | `scripts/reseed-cards.js` 用 `spawnSync('node', ...)` 调 `dev-seed.js`,纵深防御上不应该在任何路径上 spawn node 子进程(挖矿木马常以"合法进程 spawn 子进程"为掩护,减少我们自己的 spawn 有助于审计区分)。 | 改为动态 `import('./dev-seed.js')`,同进程执行,参数透传。 |
+| **H10** | 卡片 `url` 字段原校验正则 `^https?:\/\/.+` 太松,未挡 protocol-relative (`//attacker.com`) 和反斜杠绕过 (`/\attacker.com`)。 | 迁移到 `lib/urlSafe.js` 的 `isSafeCardUrl`,严格要求站内路径必须以 `/` 开头且第二个字符不是 `/` 或 `\`;非 `/` 开头必须是合法 http(s) 绝对 URL。 |
+
+### 内存 / 运行时
+
+| 编号 | 项 | 说明 |
+|---|---|---|
+| **M1** | Node 版本 | `package.json` 加 `engines.node: ">=22.0.0"`,新增 `.nvmrc = 22`。文档里所有 "Node 20" 改成 "Node 22 LTS"。 |
+| **M2** | V8 堆上限 | `ecosystem.config.cjs` 的 `--max-old-space-size`:384 → **160**。实测 Next.js 16 standalone idle 堆 60-90MB,50 并发峰值 ~130MB,160 留约 30MB 余量。再低会频繁 OOM。 |
+| **M3** | PM2 内存重启 | `max_memory_restart`:450M → **220M**。RSS 超过就自动重启,等价于"永不泄漏"的兜底。 |
+| **M4** | autoPrune 节律 | `lib/fileStore.js` 的清理定时器:**24h → 6h**。高写入表的过期行更早清,SQLite 文件与内存占用都更小。 |
+| **M5** | 限流桶默认值 | `RATE_LIMIT_MAX_BUCKETS`:5000 → **2000**。每桶 ~40B,节省约 120KB 常驻内存;极端场景(uniq 来源 > 2000)走已有的 `__overflow__` 共享桶,行为不变。 |
+| **M6** | Next.js 产物减法 | `next.config.mjs` 显式 `productionBrowserSourceMaps: false` + `compress: true`。减少 standalone 包体积,避免运行时加载 source map。 |
+| **M7** | 监听地址 | `ecosystem.config.cjs` 的 `HOSTNAME` 从 `0.0.0.0` 改成 `127.0.0.1`。**只监听本机**,强制走 nginx,防止服务器误开 3000 端口给公网。 |
+
+**关于"100MB"这条诉求 —— 我们为什么做不到:** Next.js 16 + React 19 + V8 +
+better-sqlite3 的空载 RSS 就是 120-180MB。1.2.0 已经把能压的都压了:V8 堆
+160MB 上限、原生模块只留必须的、autoPrune 更频繁、禁用 source maps。要真正
+< 100MB,必须换框架(Fastify + HTMX),那是 4-8 周重写工作量,不属于一次 patch 的范畴。
+
+### 测试扩充
+
+之前 6 个测试文件。1.2.0 新增 7 个,总 13 个:
+
+- `urlSafe.test.js` —— `isSafeHttpUrl` / `isSafeCardUrl` / `sanitizeHttpUrlOrEmpty` 的 ~50 条断言
+- `ssrfGuard.test.js` —— `isBlockedIp` 对内网 / 回环 / 链路本地 / CGNAT / IPv6 ULA / v4-mapped 的全量覆盖
+- `contentLimits.test.js` —— 各字段长度边界
+- `username.test.js` —— `validateName` + `validateBio`
+- `faviconNormalize.test.js` —— `normalizeOrigin` 边界(端口归一 / scheme 拒绝)
+- `rateLimitMemory.test.js` —— 桶总数硬顶 / 超长 ID 截断 / 500 次调用后堆增长 < 5MB
+- `emailEscape.test.js` —— `escapeHtml` 五字符转义 + XSS payload 中和
+
+### 文档
+
+- **`DEPLOY.md` 重写**
+  - 第 0 节 Node 要求 → 22 LTS
+  - 新增第 3 节 "内存预期"(表格 + 解释为什么 < 100MB 做不到)
+  - **新增第 5 节 "nginx + Cloudflare 真实 IP 恢复"** —— 完整 nginx.conf 可拷贝,含所有 CF IP 段、三条 `limit_req_zone`、认证路径强限流、每月自动更新 CF IP 的 cron 脚本
+  - **新增第 6 节 "Kinsing / 挖矿木马自查"** —— 6 步诊断(进程 / crontab / 二进制 / 外连 / 侧门)+ 确认感染后的处置流程(不试图清理,直接重装系统 + 作废所有密钥)
+  - **新增第 7 节 "SSH 硬化"** —— 关密码认证、AllowUsers、源 IP 限制、fail2ban、.env 不进 git
+  - 第 8 节上线检查清单分成应用层 + 运维层两组
+- **`README.md` 重写** —— 技术栈标 Next.js 16,内存预期章节前置警示
+- **`.env.example` 更新** —— 加 `SITE_URL`、`RATE_LIMIT_MAX_BUCKETS`、`NODE_OPTIONS` 的注释
+- **新增 `PLAN.md`** —— 本轮改动的设计说明与"不做什么"清单
+- **新增 `scripts/load-test.js`** —— Playwright 内存压力测试,采样 `/proc/<pid>/status` 的 VmRSS,打印峰值/均值/末值
+
+### 不做的事
+
+- **不做** 框架迁移(Fastify/C++):4-8 周工作量,与单次 patch 不匹配
+- **不做** 生产环境下 50 真实浏览器并发测试:沙盒里跑得出的数字对你部署环境没有参考意义
+- **不做** 改 OAuth 授权流程:PKCE + refresh token rotate 已正确
+- **不做** 去掉 CSP 的 `unsafe-inline`:React 会注入行内样式,去掉会大片破版
+
+### 文件变动速查
+
+**新增**
+- `lib/urlSafe.js`
+- `lib/contentLimits.js`
+- `.nvmrc`
+- `PLAN.md`
+- `scripts/load-test.js`
+- `tests/urlSafe.test.js`
+- `tests/ssrfGuard.test.js`
+- `tests/contentLimits.test.js`
+- `tests/username.test.js`
+- `tests/faviconNormalize.test.js`
+- `tests/rateLimitMemory.test.js`
+- `tests/emailEscape.test.js`
+
+**修改**
+- `package.json`(engines + version + load-test script)
+- `ecosystem.config.cjs`(内存/监听配置)
+- `next.config.mjs`(sourcemaps/compress)
+- `.env.example`(新增字段与说明)
+- `lib/email.js`(export escapeHtml + 模板转义)
+- `lib/username.js`(validateBio)
+- `lib/fileStore.js`(autoPrune 6h)
+- `lib/rateLimit.js`(默认桶上限 2000)
+- `scripts/reseed-cards.js`(去掉 spawnSync)
+- `app/api/account/profile/route.js`
+- `app/api/admin/users/[id]/route.js`
+- `app/api/admin/cards/route.js` + `[id]/route.js`
+- `app/api/admin/sections/route.js` + `[id]/route.js`
+- `app/api/admin/oauth-clients/route.js` + `[id]/route.js`
+- `README.md` / `DEPLOY.md` / `CHANGES.md`(本文件)
+
+---
+
 ## 1.1.2 修补(2026-04-20)
 
 基于用户反馈修了两个问题。

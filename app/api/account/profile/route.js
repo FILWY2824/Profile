@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth.js';
 import { db } from '@/lib/db.js';
 import { activityLog } from '@/lib/fileStore.js';
-import { validateName } from '@/lib/username.js';
+import { validateName, validateBio } from '@/lib/username.js';
 
 export async function GET() {
   const auth = await requireAuth();
@@ -21,7 +21,11 @@ export async function PATCH(request) {
     if (!nameCheck.valid) {
       return NextResponse.json({ error: nameCheck.message }, { status: 400 });
     }
-    const updated = db.updateById('users', auth.session.user.id, { name: nameCheck.value, bio: bio?.trim() || '' });
+    const bioCheck = validateBio(bio);
+    if (!bioCheck.valid) {
+      return NextResponse.json({ error: bioCheck.message }, { status: 400 });
+    }
+    const updated = db.updateById('users', auth.session.user.id, { name: nameCheck.value, bio: bioCheck.value });
     activityLog.record({ userId: auth.session.user.id, email: auth.session.user.email,
       action: 'update_profile', target: 'user', detail: `修改了个人资料` });
     return NextResponse.json({ success: true, user: { name: updated.name, bio: updated.bio } });

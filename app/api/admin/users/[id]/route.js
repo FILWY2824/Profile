@@ -4,7 +4,7 @@ import { db } from '@/lib/db.js';
 import { hashPassword, validatePasswordStrength } from '@/lib/password.js';
 import { loginHistory, activityLog } from '@/lib/fileStore.js';
 import { database } from '@/lib/database.js';
-import { validateName } from '@/lib/username.js';
+import { validateName, validateBio } from '@/lib/username.js';
 
 const VALID_ROLES = ['user', 'member', 'admin'];
 const VALID_STATUSES = ['active', 'suspended', 'banned'];
@@ -150,7 +150,13 @@ export async function PATCH(request, { params }) {
     }
     if (role && VALID_ROLES.includes(role)) updates.role = role;
     if (status && VALID_STATUSES.includes(status)) updates.status = status;
-    if (bio !== undefined) updates.bio = bio.trim();
+    if (bio !== undefined) {
+      const bioCheck = validateBio(bio);
+      if (!bioCheck.valid) {
+        return NextResponse.json({ error: bioCheck.message }, { status: 400 });
+      }
+      updates.bio = bioCheck.value;
+    }
 
     // 自锁防护:对 role/status 变更走 guard
     if (updates.role !== undefined || updates.status !== undefined) {

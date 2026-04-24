@@ -3,14 +3,18 @@ import { requireAdmin } from '@/lib/auth.js';
 import { db } from '@/lib/db.js';
 import { activityLog } from '@/lib/fileStore.js';
 import { normalizeOrigin, deleteCache as deleteFaviconCache } from '@/lib/favicon.js';
+import { isSafeCardUrl } from '@/lib/urlSafe.js';
+import { validateContentField } from '@/lib/contentLimits.js';
 
 const VALID_PERMISSIONS = ['public', 'user', 'member', 'admin'];
 
 function validateUrl(url) {
-  if (!url) return { valid: false, message: 'URL 不能为空' };
-  if (url.startsWith('/')) return { valid: true };
-  if (/^https?:\/\/.+/.test(url)) return { valid: true };
-  return { valid: false, message: 'URL 必须是站内路由(/开头)或 http/https 外链' };
+  if (!url || typeof url !== 'string') return { valid: false, message: 'URL 不能为空' };
+  if (url.length > 2000) return { valid: false, message: 'URL 长度不能超过 2000 字符' };
+  if (!isSafeCardUrl(url)) {
+    return { valid: false, message: 'URL 必须是站内路由(/开头,不含 \\ 或 //)或 http/https 外链' };
+  }
+  return { valid: true };
 }
 
 /**
@@ -53,8 +57,16 @@ export async function PATCH(request, { params }) {
   try {
     const { title, description, url, sectionId, order, permission } = await request.json();
     const updates = {};
-    if (title) updates.title = title.trim();
-    if (description !== undefined) updates.description = description.trim();
+    if (title !== undefined) {
+      const titleCheck = validateContentField('title', title);
+      if (!titleCheck.valid) return NextResponse.json({ error: titleCheck.message }, { status: 400 });
+      updates.title = titleCheck.value;
+    }
+    if (description !== undefined) {
+      const descCheck = validateContentField('description', description);
+      if (!descCheck.valid) return NextResponse.json({ error: descCheck.message }, { status: 400 });
+      updates.description = descCheck.value;
+    }
     if (order !== undefined) updates.order = order;
     if (permission !== undefined) {
       if (!VALID_PERMISSIONS.includes(permission)) {
