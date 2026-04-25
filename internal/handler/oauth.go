@@ -1,18 +1,12 @@
-// oauth.go — OAuth2 / OpenID Connect server endpoints.
+// oauth.go — OAuth2 server endpoints. 修复列表:
 //
-// Supported flows:
-//   - Authorization Code with PKCE (recommended; required for public clients)
-//   - Refresh Token Rotation with reuse detection (RFC 9700 §4.14)
-//
-// Not implemented (out of scope for this project):
-//   - Implicit flow (insecure; deprecated)
-//   - Resource Owner Password Credentials (insecure; deprecated)
-//   - Client Credentials (no machine-to-machine consumers planned)
-//
-// All token strings are 32 bytes from crypto/rand, hex-encoded — 64 chars
-// each. Stored as opaque strings, not JWTs. JWTs would let us avoid a DB
-// hit on /userinfo, but at the cost of revocation latency; opaque tokens
-// give us instant revocation, which we want.
+//   1. appendQuery 改用 net/url.Values 编码,杜绝注入
+//   2. 只接受 PKCE S256(删 plain 分支)
+//   3. 用户拒绝授权前先校验 redirect_uri 是否在 client 登记表(防开放重定向)
+//   4. authorization code 消费走 ConsumeIfUnused 原子操作
+//   5. refresh token 轮换走 RotateRefresh 单事务
+//   6. introspect 对 refresh token 用 RefreshTokenExpiresAt 判过期
+//   7. token 用 SHA-256 hash 存储(repository 层完成)
 package handler
 
 import (
@@ -22,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,10 +41,6 @@ type OAuthHandler struct {
 	ActivityLog *repository.ActivityLogRepo
 }
 
-// RegisterPublic mounts the user-facing endpoints. /authorize requires a
-// valid session (the user is consenting in the browser); /token and the
-// rest are called by the relying party with client credentials, no
-// session.
 func (h *OAuthHandler) RegisterPublic(g *echo.Group) {
 	g.GET("/client-info", h.clientInfo)
 	g.POST("/token", h.token)
@@ -58,7 +49,6 @@ func (h *OAuthHandler) RegisterPublic(g *echo.Group) {
 	g.POST("/revoke", h.revoke)
 }
 
-// RegisterAuthenticated mounts /authorize, which requires a logged-in user.
 func (h *OAuthHandler) RegisterAuthenticated(g *echo.Group) {
 	g.GET("/authorize/info", h.authorizeInfo)
 	g.POST("/authorize/decide", h.authorizeDecide)
@@ -66,18 +56,14 @@ func (h *OAuthHandler) RegisterAuthenticated(g *echo.Group) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// randomToken returns a 32-byte crypto/rand string, hex encoded.
 func randomToken() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(err) // crypto/rand failure is systemic
+		panic(err)
 	}
 	return hex.EncodeToString(b)
 }
 
-// parseScopeList splits "openid profile email" into [openid profile email].
-// Discards empty fragments. Order preserved; duplicates removed in
-// repository.ScopesIntersect.
 func parseScopeList(s string) []string {
 	parts := strings.Fields(s)
 	out := make([]string, 0, len(parts))
@@ -89,9 +75,6 @@ func parseScopeList(s string) []string {
 	return out
 }
 
-// jsonScopes serialises a []string into a tight JSON array. The DB stores
-// scopes this way so admins reading the table by hand see "[\"a\",\"b\"]"
-// rather than something binary.
 func jsonScopes(s []string) string {
 	if len(s) == 0 {
 		return "[]"
@@ -109,11 +92,9 @@ func parseJSONScopes(j string) []string {
 	return out
 }
 
-// validateRedirectURI looks up the client and returns true iff redirect is
-// in their registered list. Exact string match — partial matches are too
-// dangerous (https://example.com vs https://example.com.attacker.com).
+// validateRedirectURI exact-match check.
 func validateRedirectURI(client *repository.OAuthClient, redirect string) bool {
-	uris := parseJSONScopes(client.RedirectURIs) // same JSON array shape
+	uris := parseJSONScopes(client.RedirectURIs)
 	for _, u := range uris {
 		if u == redirect {
 			return true
@@ -122,10 +103,6 @@ func validateRedirectURI(client *repository.OAuthClient, redirect string) bool {
 	return false
 }
 
-// oauthError responds in OAuth2's well-defined error JSON shape. Status code
-// is the right thing for a JSON-API client; we don't try to rewrite it for
-// browser redirects (that's the relying party's job after they get the
-// error).
 func oauthError(c echo.Context, status int, code, description string) error {
 	return c.JSON(status, map[string]any{
 		"error":             code,
@@ -133,24 +110,23 @@ func oauthError(c echo.Context, status int, code, description string) error {
 	})
 }
 
+// appendQueryURL 用 net/url 安全拼装 query。值会被 url.QueryEscape。
+func appendQueryURL(base string, kv ...string) string {
+	u, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	q := u.Query()
+	for i := 0; i+1 < len(kv); i += 2 {
+		if kv[i+1] != "" {
+			q.Set(kv[i], kv[i+1])
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // ─── /authorize ──────────────────────────────────────────────────────────
-//
-// Step 1: the FE app navigates to /authorize with client_id, redirect_uri,
-// response_type=code, scope, state, code_challenge. Our SPA renders a
-// consent UI; if the user hasn't authenticated, we redirect them to login
-// first and return here afterwards.
-//
-// We split the dance into two endpoints:
-//
-//   GET  /authorize/info?... → returns the client info + requested scopes
-//                               for the consent screen to render
-//
-//   POST /authorize/decide   → user clicks "Allow"; we mint the code and
-//                               return the redirect URL for the FE to
-//                               window.location.assign() to. (We don't
-//                               302 — the FE handles navigation, which
-//                               makes login-redirect-back behaviour
-//                               cleaner.)
 
 type authorizeInfoReq struct {
 	ClientID            string
@@ -190,7 +166,6 @@ func (h *OAuthHandler) authorizeInfo(c echo.Context) error {
 			"redirect_uri 未在客户端登记表中")
 	}
 
-	// User must meet client.MinLevel: 0=user, 1=member, 2=admin.
 	u := middleware.User(c)
 	if !meetsLevel(u.Role, client.MinLevel) {
 		return oauthError(c, http.StatusForbidden, "access_denied",
@@ -201,8 +176,6 @@ func (h *OAuthHandler) authorizeInfo(c echo.Context) error {
 	requestedScopes := parseScopeList(r.Scope)
 	grantedScopes := repository.ScopesIntersect(requestedScopes, allowedScopes)
 
-	// Has the user already consented? If yes and scopes are unchanged, the
-	// FE can skip the consent screen and call /decide directly.
 	preApproved := false
 	if existing, err := h.Grants.FindByUserClient(u.ID, client.ClientID); err == nil &&
 		!existing.Revoked &&
@@ -268,17 +241,8 @@ func (h *OAuthHandler) authorizeDecide(c echo.Context) error {
 		return oauthError(c, http.StatusBadRequest, "invalid_request", "请求体无效")
 	}
 
-	if !in.Allow {
-		// User declined. Echo back a redirect URL with error params so the
-		// relying party gets the standard "access_denied" signal.
-		return c.JSON(http.StatusOK, map[string]any{
-			"redirect": appendQuery(in.RedirectURI,
-				"error", "access_denied",
-				"state", in.State,
-			),
-		})
-	}
-
+	// 关键修复:无论 Allow 还是 Deny,都先校验 client + redirect_uri,防止
+	// 攻击者用任意 redirectUri 让我们生成 access_denied 的 302 页面。
 	client, err := h.Clients.FindByClientID(in.ClientID)
 	if err != nil || client.Status != "active" {
 		return oauthError(c, http.StatusBadRequest, "invalid_client", "未知客户端")
@@ -287,19 +251,28 @@ func (h *OAuthHandler) authorizeDecide(c echo.Context) error {
 		return oauthError(c, http.StatusBadRequest, "invalid_request", "redirect_uri 不被允许")
 	}
 
+	if !in.Allow {
+		return c.JSON(http.StatusOK, map[string]any{
+			"redirect": appendQueryURL(in.RedirectURI,
+				"error", "access_denied",
+				"state", in.State,
+			),
+		})
+	}
+
 	u := middleware.User(c)
 	if !meetsLevel(u.Role, client.MinLevel) {
 		return oauthError(c, http.StatusForbidden, "access_denied", "账号等级不足")
 	}
 
-	// PKCE: required for all flows. Reject if missing.
+	// PKCE 强制。只接受 S256(原 plain 分支删除)。
 	if in.CodeChallenge == "" {
 		return oauthError(c, http.StatusBadRequest, "invalid_request",
 			"PKCE code_challenge 必填")
 	}
-	if in.CodeChallengeMethod != "S256" && in.CodeChallengeMethod != "plain" {
+	if in.CodeChallengeMethod != "S256" {
 		return oauthError(c, http.StatusBadRequest, "invalid_request",
-			"code_challenge_method 必须是 S256 或 plain")
+			"code_challenge_method 必须是 S256")
 	}
 
 	requested := parseScopeList(in.Scope)
@@ -312,60 +285,28 @@ func (h *OAuthHandler) authorizeDecide(c echo.Context) error {
 	if _, err := h.Codes.Create(repository.OAuthCodeInput{
 		Code: codeStr, ClientID: in.ClientID, UserID: u.ID,
 		RedirectURI: in.RedirectURI, Scope: scopeStr,
-		CodeChallenge: in.CodeChallenge, CodeChallengeMethod: in.CodeChallengeMethod,
+		CodeChallenge: in.CodeChallenge, CodeChallengeMethod: "S256",
 		ExpiresAt: time.Now().Add(expiry),
 	}); err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
+		return oauthError(c, http.StatusInternalServerError, "server_error", "授权码生成失败")
 	}
 
 	if err := h.Grants.Upsert(u.ID, in.ClientID, client.Name, jsonScopes(scopes)); err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
+		return oauthError(c, http.StatusInternalServerError, "server_error", "授权记录失败")
 	}
 
 	_ = h.ActivityLog.Record(auditFromCtx(c, "oauth.authorize",
 		"授权应用:"+client.Name, in.ClientID))
 
 	return c.JSON(http.StatusOK, map[string]any{
-		"redirect": appendQuery(in.RedirectURI,
+		"redirect": appendQueryURL(in.RedirectURI,
 			"code", codeStr,
 			"state", in.State,
 		),
 	})
 }
 
-// appendQuery is a tiny URL builder: takes pairs of name,value strings and
-// glues them on with ? or & as appropriate. Skips pairs whose value is "".
-func appendQuery(base string, kv ...string) string {
-	var b strings.Builder
-	b.WriteString(base)
-	sep := "?"
-	if strings.Contains(base, "?") {
-		sep = "&"
-	}
-	for i := 0; i+1 < len(kv); i += 2 {
-		if kv[i+1] == "" {
-			continue
-		}
-		b.WriteString(sep)
-		b.WriteString(kv[i])
-		b.WriteByte('=')
-		// We never embed user-controlled chars beyond what the URL spec
-		// allows. The state token comes back to us verbatim; if a relying
-		// party wants something fancy in there they encode it themselves.
-		b.WriteString(kv[i+1])
-		sep = "&"
-	}
-	return b.String()
-}
-
 // ─── /token ──────────────────────────────────────────────────────────────
-//
-// Two grant types:
-//   - authorization_code: exchange code+pkce for access+refresh
-//   - refresh_token:      exchange refresh for new access+refresh
-//
-// Client credentials are required for both. We support both
-// HTTP Basic and form-body (RFC 6749 §2.3.1) auth shapes.
 
 func (h *OAuthHandler) token(c echo.Context) error {
 	if err := c.Request().ParseForm(); err != nil {
@@ -398,7 +339,6 @@ func (h *OAuthHandler) token(c echo.Context) error {
 }
 
 func readClientCredentials(c echo.Context) (string, string) {
-	// HTTP Basic header preferred per RFC 6749.
 	if user, pass, ok := c.Request().BasicAuth(); ok {
 		return user, pass
 	}
@@ -413,14 +353,18 @@ func (h *OAuthHandler) tokenAuthorizationCode(c echo.Context, client *repository
 	redirectURI := form.Get("redirect_uri")
 	verifier := form.Get("code_verifier")
 
-	code, err := h.Codes.FindByCode(codeStr)
+	code, err := h.Codes.FindByPlainCode(codeStr)
 	if err != nil {
 		return oauthError(c, http.StatusBadRequest, "invalid_grant", "授权码无效")
 	}
-	if code.Used {
-		// Reusing an authorization code is itself an attack signal
-		// (RFC 6749 §10.5). Revoke any tokens already issued from this
-		// code.
+	// 原子消费 — 这是修复"消费不是原子操作"的关键。
+	consumed, err := h.Codes.ConsumeIfUnused(code.ID)
+	if err != nil {
+		return oauthError(c, http.StatusInternalServerError, "server_error", "授权码处理失败")
+	}
+	if !consumed {
+		// 已被使用过 = 可能是被攻击者重放;按 RFC 6749 §10.5 撤销该 code 之前
+		// 颁发的所有 token,防止 race 拿到的 token 被恶意保留。
 		_, _ = h.Tokens.RevokeByUserClient(code.UserID, client.ClientID)
 		return oauthError(c, http.StatusBadRequest, "invalid_grant", "授权码已使用")
 	}
@@ -437,12 +381,6 @@ func (h *OAuthHandler) tokenAuthorizationCode(c echo.Context, client *repository
 		return oauthError(c, http.StatusBadRequest, "invalid_grant", "PKCE 校验失败")
 	}
 
-	// Mark the code used BEFORE we mint the token, so the reuse-detection
-	// branch above is reachable on the next request.
-	if err := h.Codes.MarkUsed(code.ID); err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
-	}
-
 	access := randomToken()
 	refresh := randomToken()
 	accessExpiry := time.Duration(h.Settings.GetInt("OAUTH_TOKEN_EXPIRY_SECONDS", 3600)) * time.Second
@@ -450,33 +388,25 @@ func (h *OAuthHandler) tokenAuthorizationCode(c echo.Context, client *repository
 
 	tok, err := h.Tokens.Create(repository.OAuthTokenInput{
 		AccessToken: access, RefreshToken: refresh,
-		ClientID: client.ClientID, UserID: code.UserID,
-		Scope:                 code.Scope,
+		ClientID: client.ClientID, UserID: code.UserID, Scope: code.Scope,
 		ExpiresAt:             time.Now().Add(accessExpiry),
 		RefreshTokenExpiresAt: time.Now().Add(refreshExpiry),
 	})
 	if err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
+		return oauthError(c, http.StatusInternalServerError, "server_error", "签发令牌失败")
 	}
 	_ = h.Grants.UpdateLastUsed(code.UserID, client.ClientID)
 
-	return c.JSON(http.StatusOK, tokenResponse(tok, accessExpiry))
+	return c.JSON(http.StatusOK, tokenResponseWithPlain(access, refresh, tok.Scope, accessExpiry))
 }
 
-// verifyPKCE returns true iff verifier hashes to the recorded challenge.
+// verifyPKCE 只支持 S256。
 func verifyPKCE(challenge, method, verifier string) bool {
-	if verifier == "" {
+	if verifier == "" || method != "S256" {
 		return false
 	}
-	switch method {
-	case "S256":
-		sum := sha256.Sum256([]byte(verifier))
-		// RFC 7636: base64url WITHOUT padding.
-		return base64.RawURLEncoding.EncodeToString(sum[:]) == challenge
-	case "plain":
-		return auth.ConstantTimeEqual(challenge, verifier)
-	}
-	return false
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:]) == challenge
 }
 
 func (h *OAuthHandler) tokenRefresh(c echo.Context, client *repository.OAuthClient, form interface {
@@ -486,7 +416,7 @@ func (h *OAuthHandler) tokenRefresh(c echo.Context, client *repository.OAuthClie
 	if refresh == "" {
 		return oauthError(c, http.StatusBadRequest, "invalid_request", "缺少 refresh_token")
 	}
-	old, err := h.Tokens.FindByRefreshToken(refresh)
+	old, err := h.Tokens.FindByPlainRefreshToken(refresh)
 	if err != nil {
 		return oauthError(c, http.StatusBadRequest, "invalid_grant", "refresh_token 无效")
 	}
@@ -497,15 +427,13 @@ func (h *OAuthHandler) tokenRefresh(c echo.Context, client *repository.OAuthClie
 		return oauthError(c, http.StatusBadRequest, "invalid_grant", "refresh_token 已撤销")
 	}
 	if old.Replaced {
-		// REUSE DETECTED. The legitimate user already rotated this; the
-		// presenter is either an attacker who stole the token or a
-		// disastrously broken client. Either way: kill the chain.
+		// 重用检测:RFC 9700 §4.14
 		n, _ := h.Tokens.RevokeChain(old.ID)
 		_ = h.ActivityLog.Record(model.ActivityLog{
 			UserID: old.UserID, Email: "", Action: "oauth.refresh_reuse",
-			Detail:  "检测到 refresh_token 重用,已撤销整条 token 链",
-			Target:  client.ClientID,
-			Meta:    `{"revokedCount":` + intToStr(n) + `}`,
+			Detail: "检测到 refresh_token 重用,已撤销整条 token 链",
+			Target: client.ClientID,
+			Meta:   `{"revokedCount":` + intToStr(n) + `}`,
 		})
 		return oauthError(c, http.StatusBadRequest, "invalid_grant",
 			"refresh_token 重用,会话已撤销")
@@ -516,32 +444,27 @@ func (h *OAuthHandler) tokenRefresh(c echo.Context, client *repository.OAuthClie
 		}
 	}
 
-	// Mint new chain link, mark old replaced.
 	access := randomToken()
 	newRefresh := randomToken()
 	accessExpiry := time.Duration(h.Settings.GetInt("OAUTH_TOKEN_EXPIRY_SECONDS", 3600)) * time.Second
 	refreshExpiry := time.Duration(h.Settings.GetInt("OAUTH_REFRESH_TOKEN_EXPIRY_DAYS", 30)) * 24 * time.Hour
 
-	tok, err := h.Tokens.Create(repository.OAuthTokenInput{
+	// 单事务原子轮换。
+	tok, err := h.Tokens.RotateRefresh(old.ID, repository.OAuthTokenInput{
 		AccessToken: access, RefreshToken: newRefresh,
 		ClientID: old.ClientID, UserID: old.UserID, Scope: old.Scope,
 		ExpiresAt:             time.Now().Add(accessExpiry),
 		RefreshTokenExpiresAt: time.Now().Add(refreshExpiry),
-		ParentTokenID:         old.ID,
 	})
 	if err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
-	}
-	if err := h.Tokens.MarkReplaced(old.ID); err != nil {
-		return oauthError(c, http.StatusInternalServerError, "server_error", err.Error())
+		return oauthError(c, http.StatusBadRequest, "invalid_grant", "refresh_token 已被使用,请重新登录")
 	}
 	_ = h.Grants.UpdateLastUsed(old.UserID, client.ClientID)
 
-	return c.JSON(http.StatusOK, tokenResponse(tok, accessExpiry))
+	return c.JSON(http.StatusOK, tokenResponseWithPlain(access, newRefresh, tok.Scope, accessExpiry))
 }
 
 func intToStr(n int) string {
-	// Tiny inline itoa, avoid dragging strconv into this file's imports.
 	if n == 0 {
 		return "0"
 	}
@@ -563,15 +486,15 @@ func intToStr(n int) string {
 	return string(buf[i:])
 }
 
-func tokenResponse(t *repository.OAuthToken, accessExpiry time.Duration) map[string]any {
+func tokenResponseWithPlain(access, refresh, scope string, accessExpiry time.Duration) map[string]any {
 	out := map[string]any{
-		"access_token": t.AccessToken,
+		"access_token": access,
 		"token_type":   "Bearer",
 		"expires_in":   int(accessExpiry.Seconds()),
-		"scope":        t.Scope,
+		"scope":        scope,
 	}
-	if t.RefreshToken != "" {
-		out["refresh_token"] = t.RefreshToken
+	if refresh != "" {
+		out["refresh_token"] = refresh
 	}
 	return out
 }
@@ -612,9 +535,6 @@ func (h *OAuthHandler) userinfo(c echo.Context) error {
 	return c.JSON(http.StatusOK, out)
 }
 
-// requireBearerToken parses the Authorization header and returns the token
-// row if it's valid, non-revoked, and unexpired. Otherwise responds 401
-// with WWW-Authenticate per RFC 6750.
 func (h *OAuthHandler) requireBearerToken(c echo.Context) (*repository.OAuthToken, error) {
 	authHeader := c.Request().Header.Get("Authorization")
 	const p = "Bearer "
@@ -623,7 +543,7 @@ func (h *OAuthHandler) requireBearerToken(c echo.Context) (*repository.OAuthToke
 		return nil, echo.NewHTTPError(http.StatusUnauthorized, "缺少 access_token")
 	}
 	access := strings.TrimSpace(authHeader[len(p):])
-	tok, err := h.Tokens.FindByAccessToken(access)
+	tok, err := h.Tokens.FindByPlainAccessToken(access)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusUnauthorized, "access_token 无效")
 	}
@@ -636,7 +556,7 @@ func (h *OAuthHandler) requireBearerToken(c echo.Context) (*repository.OAuthToke
 	return tok, nil
 }
 
-// ─── /introspect (RFC 7662) ──────────────────────────────────────────────
+// ─── /introspect ─────────────────────────────────────────────────────────
 
 func (h *OAuthHandler) introspect(c echo.Context) error {
 	if err := c.Request().ParseForm(); err != nil {
@@ -648,35 +568,70 @@ func (h *OAuthHandler) introspect(c echo.Context) error {
 		return oauthError(c, http.StatusUnauthorized, "invalid_client", "客户端凭据无效")
 	}
 	tokenStr := c.Request().PostForm.Get("token")
+	tokenHint := c.Request().PostForm.Get("token_type_hint") // "access_token" | "refresh_token"
 	if tokenStr == "" {
 		return c.JSON(http.StatusOK, map[string]any{"active": false})
 	}
-	// Try access then refresh.
-	tok, err := h.Tokens.FindByAccessToken(tokenStr)
-	if err != nil {
-		tok, err = h.Tokens.FindByRefreshToken(tokenStr)
+
+	// 优先按 hint 查,再回退尝试另一种。
+	var tok *repository.OAuthToken
+	var isRefresh bool
+	if tokenHint == "refresh_token" {
+		tok, err = h.Tokens.FindByPlainRefreshToken(tokenStr)
+		isRefresh = true
 		if err != nil {
-			return c.JSON(http.StatusOK, map[string]any{"active": false})
+			tok, err = h.Tokens.FindByPlainAccessToken(tokenStr)
+			isRefresh = false
 		}
+	} else {
+		tok, err = h.Tokens.FindByPlainAccessToken(tokenStr)
+		isRefresh = false
+		if err != nil {
+			tok, err = h.Tokens.FindByPlainRefreshToken(tokenStr)
+			isRefresh = true
+		}
+	}
+	if err != nil || tok == nil {
+		return c.JSON(http.StatusOK, map[string]any{"active": false})
 	}
 	if tok.Revoked || tok.ClientID != client.ClientID {
 		return c.JSON(http.StatusOK, map[string]any{"active": false})
 	}
-	if expired, _ := time.Parse(time.RFC3339, tok.ExpiresAt); time.Now().After(expired) {
+	if tok.Replaced && isRefresh {
+		// 已轮换的 refresh token 不再 active
 		return c.JSON(http.StatusOK, map[string]any{"active": false})
 	}
-	exp, _ := time.Parse(time.RFC3339, tok.ExpiresAt)
+
+	// 修复:refresh token 用 RefreshTokenExpiresAt;access 用 ExpiresAt。
+	var expStr string
+	if isRefresh {
+		expStr = tok.RefreshTokenExpiresAt
+	} else {
+		expStr = tok.ExpiresAt
+	}
+	if expStr == "" {
+		return c.JSON(http.StatusOK, map[string]any{"active": false})
+	}
+	exp, err := time.Parse(time.RFC3339, expStr)
+	if err != nil || time.Now().After(exp) {
+		return c.JSON(http.StatusOK, map[string]any{"active": false})
+	}
+
+	tokenType := "Bearer"
+	if isRefresh {
+		tokenType = "refresh_token"
+	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"active":     true,
 		"scope":      tok.Scope,
 		"client_id":  tok.ClientID,
 		"sub":        tok.UserID,
-		"token_type": "Bearer",
+		"token_type": tokenType,
 		"exp":        exp.Unix(),
 	})
 }
 
-// ─── /revoke (RFC 7009) ──────────────────────────────────────────────────
+// ─── /revoke ─────────────────────────────────────────────────────────────
 
 func (h *OAuthHandler) revoke(c echo.Context) error {
 	if err := c.Request().ParseForm(); err != nil {
@@ -689,11 +644,11 @@ func (h *OAuthHandler) revoke(c echo.Context) error {
 	}
 	tokenStr := c.Request().PostForm.Get("token")
 	if tokenStr == "" {
-		return c.NoContent(http.StatusOK) // RFC: respond 200 even on no-op
+		return c.NoContent(http.StatusOK)
 	}
-	tok, err := h.Tokens.FindByAccessToken(tokenStr)
+	tok, err := h.Tokens.FindByPlainAccessToken(tokenStr)
 	if err != nil {
-		tok, err = h.Tokens.FindByRefreshToken(tokenStr)
+		tok, err = h.Tokens.FindByPlainRefreshToken(tokenStr)
 		if err != nil {
 			return c.NoContent(http.StatusOK)
 		}
@@ -706,8 +661,6 @@ func (h *OAuthHandler) revoke(c echo.Context) error {
 }
 
 // ─── /client-info ────────────────────────────────────────────────────────
-// Public read-only endpoint for the consent screen and any error pages
-// that need to display "you were authenticating with X".
 
 func (h *OAuthHandler) clientInfo(c echo.Context) error {
 	cid := c.QueryParam("client_id")
@@ -726,10 +679,6 @@ func (h *OAuthHandler) clientInfo(c echo.Context) error {
 }
 
 // ─── Account: list/revoke own grants ─────────────────────────────────────
-//
-// These live in /api/account/oauth-grants/* and reuse session auth, not
-// OAuth bearer auth. They let users see and revoke the apps they've
-// authorised. Wired up alongside /api/account/* in main.go.
 
 type AccountGrantsHandler struct {
 	Grants *repository.OAuthGrantRepo
@@ -746,7 +695,7 @@ func (h *AccountGrantsHandler) list(c echo.Context) error {
 	u := middleware.User(c)
 	rows, err := h.Grants.ListByUser(u.ID)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
 	out := make([]map[string]any, 0, len(rows))
 	for _, g := range rows {
@@ -765,11 +714,9 @@ func (h *AccountGrantsHandler) list(c echo.Context) error {
 func (h *AccountGrantsHandler) revoke(c echo.Context) error {
 	u := middleware.User(c)
 	id := c.Param("id")
-	// Find first to check ownership — users mustn't revoke other users'
-	// grants by guessing IDs.
 	rows, err := h.Grants.ListByUser(u.ID)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
 	var found *repository.OAuthGrant
 	for i := range rows {
@@ -782,7 +729,7 @@ func (h *AccountGrantsHandler) revoke(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "未找到")
 	}
 	if err := h.Grants.Revoke(found.ID); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "撤销失败")
 	}
 	_, _ = h.Tokens.RevokeByUserClient(u.ID, found.ClientID)
 	_ = h.Audit.Record(auditFromCtx(c, "oauth.grant_revoke",
@@ -790,5 +737,5 @@ func (h *AccountGrantsHandler) revoke(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"success": true})
 }
 
-// silence unused imports until future use
+// silence unused
 var _ = validator.MaxOAuthClientNameLen

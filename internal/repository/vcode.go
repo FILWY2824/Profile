@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -13,21 +15,24 @@ type VCodeRepo struct{ db *sql.DB }
 
 func NewVCodeRepo(db *sql.DB) *VCodeRepo { return &VCodeRepo{db: db} }
 
-// IssueInput packs the fields that vary per call; Code is supplied by the
-// caller so the same random generator is used everywhere (see
-// internal/handler/auth.go#newCode).
+// HashCode 把明文验证码做 SHA-256 -> hex,存进 code_hash 列。
+// 我们没有用 bcrypt 因为 6 位数字字典空间小(10^6),bcrypt 的延迟反而成为
+// DOS 放大器,且 SHA-256 + 限流(每邮箱每分钟最多 N 次发码) 已足以防暴破。
+func HashCode(code string) string {
+	sum := sha256.Sum256([]byte(code))
+	return hex.EncodeToString(sum[:])
+}
+
 type IssueInput struct {
 	Email     string
-	Code      string
+	Code      string // 明文,本函数内做 hash
 	Type      string
 	IP        string
 	Meta      string
 	ExpiresAt time.Time
 }
 
-// Issue invalidates any prior unused code for (email, type) — that's the
-// "send again" semantics users expect: the old code stops working the
-// moment a new one is issued.
+// Issue 把同 (email,type) 旧未使用码标记为已使用,然后插入新行。
 func (r *VCodeRepo) Issue(in IssueInput) (*model.VerificationCode, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -35,9 +40,6 @@ func (r *VCodeRepo) Issue(in IssueInput) (*model.VerificationCode, error) {
 	}
 	defer tx.Rollback()
 
-	// Superseded old codes don't need deleting — the "used=1" flag is
-	// enough and preserves audit trail. Callers looking up "latest active"
-	// already filter used=0.
 	if _, err := tx.Exec(
 		`UPDATE verification_codes SET used = 1 WHERE email = ? AND type = ? AND used = 0`,
 		in.Email, in.Type,
@@ -47,10 +49,11 @@ func (r *VCodeRepo) Issue(in IssueInput) (*model.VerificationCode, error) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := uuid.NewString()
+	hash := HashCode(in.Code)
 	if _, err := tx.Exec(`
-		INSERT INTO verification_codes (id, email, code, type, ip, meta, attempts, used, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-		id, in.Email, in.Code, in.Type, in.IP, in.Meta,
+		INSERT INTO verification_codes (id, email, code, code_hash, type, ip, meta, attempts, used, expires_at, created_at)
+		VALUES (?, ?, '', ?, ?, ?, ?, 0, 0, ?, ?)`,
+		id, in.Email, hash, in.Type, in.IP, in.Meta,
 		in.ExpiresAt.UTC().Format(time.RFC3339), now,
 	); err != nil {
 		return nil, err
@@ -61,18 +64,16 @@ func (r *VCodeRepo) Issue(in IssueInput) (*model.VerificationCode, error) {
 	}
 
 	return &model.VerificationCode{
-		ID: id, Email: in.Email, Code: in.Code, Type: in.Type, IP: in.IP,
+		ID: id, Email: in.Email, Type: in.Type, IP: in.IP,
 		Meta: in.Meta, Used: false, ExpiresAt: in.ExpiresAt.UTC().Format(time.RFC3339),
 		CreatedAt: now,
 	}, nil
 }
 
-// FindActive returns the most recent unused, unexpired code for (email, type)
-// or ErrNotFound. Handlers check expiry again because there's a race window
-// between "SELECT" and "now" — cheap to re-check.
+// FindActive 返回最近一条未使用的码(不返回 hash 给业务层)。
 func (r *VCodeRepo) FindActive(email, codeType string) (*model.VerificationCode, error) {
 	row := r.db.QueryRow(`
-		SELECT id, email, code, type, ip, meta, attempts, used, expires_at, created_at
+		SELECT id, email, code_hash, type, ip, meta, attempts, used, expires_at, created_at
 		FROM verification_codes
 		WHERE email = ? AND type = ? AND used = 0
 		ORDER BY created_at DESC
@@ -80,7 +81,8 @@ func (r *VCodeRepo) FindActive(email, codeType string) (*model.VerificationCode,
 
 	var v model.VerificationCode
 	var used int
-	if err := row.Scan(&v.ID, &v.Email, &v.Code, &v.Type, &v.IP, &v.Meta,
+	var hash string
+	if err := row.Scan(&v.ID, &v.Email, &hash, &v.Type, &v.IP, &v.Meta,
 		&v.Attempts, &used, &v.ExpiresAt, &v.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -88,11 +90,26 @@ func (r *VCodeRepo) FindActive(email, codeType string) (*model.VerificationCode,
 		return nil, err
 	}
 	v.Used = used == 1
+	v.CodeHash = hash
 	return &v, nil
 }
 
-// IncrementAttempts atomically increments the attempts column and returns the
-// new value. Used to implement "5 wrong tries and this code is dead".
+// VerifyCode 等值校验 hash,常量时间。
+func (r *VCodeRepo) VerifyCode(stored, plainCandidate string) bool {
+	if stored == "" {
+		return false
+	}
+	want := HashCode(plainCandidate)
+	if len(stored) != len(want) {
+		return false
+	}
+	var diff byte
+	for i := 0; i < len(stored); i++ {
+		diff |= stored[i] ^ want[i]
+	}
+	return diff == 0
+}
+
 func (r *VCodeRepo) IncrementAttempts(id string) (int, error) {
 	_, err := r.db.Exec(`UPDATE verification_codes SET attempts = attempts + 1 WHERE id = ?`, id)
 	if err != nil {
@@ -103,17 +120,24 @@ func (r *VCodeRepo) IncrementAttempts(id string) (int, error) {
 	return n, err
 }
 
-// MarkUsed flags the row as consumed. Call from inside the same handler that
-// validated the code — once used it can never be validated again.
+// ConsumeIfUnused 原子地把 used=0 -> 1。返回是否成功(true 表示这次调用确实
+// 把它消费掉了,false 表示之前已经被消费或不存在)。
+// 这是修复"消费不是原子操作"问题的关键。
+func (r *VCodeRepo) ConsumeIfUnused(id string) (bool, error) {
+	res, err := r.db.Exec(`UPDATE verification_codes SET used = 1 WHERE id = ? AND used = 0`, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// MarkUsed 兼容旧路径(非原子,不再推荐)。
 func (r *VCodeRepo) MarkUsed(id string) error {
 	_, err := r.db.Exec(`UPDATE verification_codes SET used = 1 WHERE id = ?`, id)
 	return err
 }
 
-// PruneExpired deletes used-or-expired codes older than cutoff. Called from
-// the periodic sweeper to keep the table from growing forever. Returns the
-// number of deleted rows so the sweeper can log something only when it
-// matters.
 func (r *VCodeRepo) PruneExpired() (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := r.db.Exec(

@@ -1,27 +1,17 @@
-// Package handler groups HTTP handlers by business area. This file is the
-// auth surface: /api/auth/*.
+// auth.go — /api/auth/* 端点。
 //
-// Design notes on flow:
-//  - Register is a two-step flow. POST /register takes email+password+name,
-//    hashes the password immediately, and stores the hash in the pending
-//    verification code's meta field. POST /register/confirm reads the meta
-//    back and creates the user row in a single transaction. This keeps us
-//    from having "half-created" users if the verify step never completes.
-//
-//  - Login responses are uniform: "邮箱或密码错误" for both missing user
-//    and wrong password, from the same 401 status. Combined with the
-//    timing-equal bcrypt compare in auth.ConstantTimeVerify, login cannot
-//    be used for user enumeration.
-//
-//  - forgot-password always returns success even if the email isn't in the
-//    DB. Leaking "that email isn't registered here" is a privacy hole many
-//    sites accidentally ship.
+// 改动:
+//   1. writeDevEcho 改为只看 cfg.AppEnv == "development",生产环境绝不回显
+//      验证码到响应,无论 mailer 是否真的发出了邮件。
+//   2. 注册流程把 password hash 从 verification_codes.meta 挪到独立的
+//      pending_registrations 表。
+//   3. 验证码用 SHA-256 hash 存储,VCodeRepo.VerifyCode 做常量时间比较。
+//   4. 验证码消费用 ConsumeIfUnused 原子操作。
 package handler
 
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -42,23 +32,21 @@ import (
 	"github.com/qishu/profile/internal/validator"
 )
 
-// AuthHandler bundles the dependencies of /api/auth/*. Construct one in main
-// and register its routes via Register.
 type AuthHandler struct {
 	Cfg       *config.Config
 	Signer    *auth.Signer
 	Settings  *settings.Store
-	Email     email.Sender
+	Email     *email.Sender
 	Turnstile *turnstile.Verifier
 	Limiter   ratelimit.Limiter
 
-	Users         *repository.UserRepo
-	VCodes        *repository.VCodeRepo
-	LoginHistory  *repository.LoginHistoryRepo
-	ActivityLog   *repository.ActivityLogRepo
+	Users        *repository.UserRepo
+	VCodes       *repository.VCodeRepo
+	Pending      *repository.PendingRepo
+	LoginHistory *repository.LoginHistoryRepo
+	ActivityLog  *repository.ActivityLogRepo
 }
 
-// Register attaches the /api/auth/* routes to g.
 func (h *AuthHandler) Register(g *echo.Group) {
 	g.POST("/register", h.register)
 	g.POST("/register/confirm", h.registerConfirm)
@@ -74,20 +62,14 @@ func (h *AuthHandler) Register(g *echo.Group) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-// newCode returns a 6-digit numeric string, zero-padded. Using crypto/rand
-// because verification codes are short enough that math/rand would be
-// attackable given state knowledge.
 func newCode() string {
 	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 	if err != nil {
-		// rand.Reader failing is a systemic fault — panic is appropriate.
 		panic(err)
 	}
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
-// setAuthCookie writes the session cookie. Production-only Secure to allow
-// curl-testing over plain HTTP in dev.
 func (h *AuthHandler) setAuthCookie(c echo.Context, token string) {
 	c.SetCookie(&http.Cookie{
 		Name:     auth.CookieName,
@@ -108,7 +90,6 @@ func (h *AuthHandler) clearAuthCookie(c echo.Context) {
 	})
 }
 
-// rl is a tiny convenience that glues settings → rule → limiter.
 func (h *AuthHandler) rl(bucket, key, maxKey, winKey string, defaultMax, defaultWinMin int) ratelimit.Decision {
 	return h.Limiter.Allow(bucket, key, ratelimit.Rule{
 		Max:    h.Settings.GetInt(maxKey, defaultMax),
@@ -116,24 +97,20 @@ func (h *AuthHandler) rl(bucket, key, maxKey, winKey string, defaultMax, default
 	})
 }
 
-// vcodeExpiry returns the currently-configured verification code lifetime.
 func (h *AuthHandler) vcodeExpiry() time.Duration {
 	mins := h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30)
 	return time.Duration(mins) * time.Minute
 }
 
-// writeDevEcho adds the verification code to the response body when the
-// email sender is in dev mode. This makes local testing trivial and is a
-// no-op in production (DevMode() only returns true when RESEND_API_KEY is
-// empty, which throws a startup warning in non-dev env).
+// writeDevEcho 关键安全修复:仅在 APP_ENV=development 时回显。
+// 生产环境即便 RESEND_API_KEY 没设置,也绝不向响应里塞验证码——避免
+// "运维忘填 RESEND key 导致全网用户拿到验证码" 的事故。
 func (h *AuthHandler) writeDevEcho(body map[string]any, code string) {
-	if h.Email.DevMode() {
+	if !h.Cfg.IsProduction() {
 		body["devCode"] = code
 	}
 }
 
-// publicUser is the JSON projection returned to the browser — never the
-// full User struct, which carries the password hash.
 type publicUser struct {
 	ID            string `json:"id"`
 	Email         string `json:"email"`
@@ -151,11 +128,8 @@ func toPublicUser(u *model.User) publicUser {
 	}
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────────────
+// ─── /register ────────────────────────────────────────────────────────────
 
-// register takes email, password, name, and optional turnstileToken. On
-// success, sends a verification code. Does NOT create the user row — that
-// happens on /register/confirm.
 func (h *AuthHandler) register(c echo.Context) error {
 	type req struct {
 		Email          string `json:"email"`
@@ -192,31 +166,26 @@ func (h *AuthHandler) register(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "人机验证失败")
 	}
 
-	// Email already taken? We DO leak this, because the register flow would
-	// leak it anyway by failing at /register/confirm, and the current shape
-	// gives better UX.
 	if _, err := h.Users.FindByEmail(in.Email); err == nil {
 		return echo.NewHTTPError(http.StatusConflict, "该邮箱已注册")
 	}
 
-	// Hash the password now — store in meta — create user row only after
-	// verification succeeds. Cost: ~250ms, paid once.
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "密码处理失败")
 	}
 
-	metaBytes, _ := json.Marshal(map[string]string{
-		"passwordHash": hash,
-		"name":         in.Name,
-	})
+	// 关键修复:password hash 进 pending_registrations 而不是 vcode.meta。
+	expires := time.Now().Add(h.vcodeExpiry())
+	if err := h.Pending.Upsert(in.Email, hash, in.Name, expires); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "服务器错误")
+	}
+
 	code := newCode()
-	_, err = h.VCodes.Issue(repository.IssueInput{
+	if _, err := h.VCodes.Issue(repository.IssueInput{
 		Email: in.Email, Code: code, Type: model.VCodeRegister,
-		IP: ip, Meta: string(metaBytes),
-		ExpiresAt: time.Now().Add(h.vcodeExpiry()),
-	})
-	if err != nil {
+		IP: ip, ExpiresAt: expires,
+	}); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "服务器错误")
 	}
 
@@ -231,7 +200,8 @@ func (h *AuthHandler) register(c echo.Context) error {
 	return c.JSON(http.StatusOK, body)
 }
 
-// registerConfirm consumes the verification code and creates the user.
+// ─── /register/confirm ────────────────────────────────────────────────────
+
 func (h *AuthHandler) registerConfirm(c echo.Context) error {
 	type req struct {
 		Email string `json:"email"`
@@ -255,34 +225,33 @@ func (h *AuthHandler) registerConfirm(c echo.Context) error {
 	if v.Attempts >= maxAttempts {
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误次数过多,请重新发送")
 	}
-	if !auth.ConstantTimeEqual(v.Code, in.Code) {
+	if !h.VCodes.VerifyCode(v.CodeHash, in.Code) {
 		_, _ = h.VCodes.IncrementAttempts(v.ID)
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误")
 	}
 
-	var meta struct {
-		PasswordHash string `json:"passwordHash"`
-		Name         string `json:"name"`
+	// 原子消费验证码
+	consumed, err := h.VCodes.ConsumeIfUnused(v.ID)
+	if err != nil || !consumed {
+		return echo.NewHTTPError(http.StatusBadRequest, "验证码已被使用")
 	}
-	_ = json.Unmarshal([]byte(v.Meta), &meta)
-	if meta.PasswordHash == "" || meta.Name == "" {
+
+	// 取出 pending_registrations 数据(原子取出 + 删除)
+	pending, err := h.Pending.Take(in.Email)
+	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "会话已失效,请重新注册")
 	}
 
-	// Race: another client might create this user between our FindByEmail
-	// check in /register and here. Let the DB UNIQUE constraint be the
-	// arbiter.
 	u, err := h.Users.Create(repository.CreateInput{
 		Email:         in.Email,
-		PasswordHash:  meta.PasswordHash,
-		Name:          meta.Name,
+		PasswordHash:  pending.PasswordHash,
+		Name:          pending.Name,
 		Role:          model.RoleUser,
 		EmailVerified: true,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusConflict, "该邮箱已注册")
 	}
-	_ = h.VCodes.MarkUsed(v.ID)
 
 	_ = h.ActivityLog.Record(model.ActivityLog{
 		UserID: u.ID, Username: u.Name, Email: u.Email,
@@ -301,9 +270,8 @@ func (h *AuthHandler) registerConfirm(c echo.Context) error {
 	})
 }
 
-// login authenticates with email+password. Implements the timing-equal
-// bcrypt compare and the three-state auth outcome (wrong creds / unverified
-// email / banned).
+// ─── /login ───────────────────────────────────────────────────────────────
+
 func (h *AuthHandler) login(c echo.Context) error {
 	type req struct {
 		Email          string `json:"email"`
@@ -396,8 +364,8 @@ func (h *AuthHandler) logout(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"success": true})
 }
 
-// forgotPassword issues a reset code. Always returns success, even if the
-// email isn't registered — privacy.
+// ─── /forgot-password ────────────────────────────────────────────────────
+
 func (h *AuthHandler) forgotPassword(c echo.Context) error {
 	type req struct {
 		Email          string `json:"email"`
@@ -427,17 +395,15 @@ func (h *AuthHandler) forgotPassword(c echo.Context) error {
 
 	u, err := h.Users.FindByEmail(in.Email)
 	if err != nil {
-		// Silently succeed to avoid user enumeration.
 		return c.JSON(http.StatusOK, body)
 	}
 
 	code := newCode()
-	_, err = h.VCodes.Issue(repository.IssueInput{
+	if _, err := h.VCodes.Issue(repository.IssueInput{
 		Email: u.Email, Code: code, Type: model.VCodeForgotPassword,
 		IP: ip, ExpiresAt: time.Now().Add(h.vcodeExpiry()),
-	})
-	if err != nil {
-		return c.JSON(http.StatusOK, body) // still respond success
+	}); err != nil {
+		return c.JSON(http.StatusOK, body)
 	}
 
 	subject, htmlBody, textBody := email.ComposeVerificationCode(
@@ -450,7 +416,8 @@ func (h *AuthHandler) forgotPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, body)
 }
 
-// resetPassword consumes a forgot-password code and sets the new password.
+// ─── /reset-password ─────────────────────────────────────────────────────
+
 func (h *AuthHandler) resetPassword(c echo.Context) error {
 	type req struct {
 		Email       string `json:"email"`
@@ -469,7 +436,6 @@ func (h *AuthHandler) resetPassword(c echo.Context) error {
 
 	u, err := h.Users.FindByEmail(in.Email)
 	if err != nil {
-		// Uniform failure to avoid enumeration.
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码无效或已过期")
 	}
 
@@ -483,9 +449,14 @@ func (h *AuthHandler) resetPassword(c echo.Context) error {
 	if v.Attempts >= h.Settings.GetInt("VERIFICATION_CODE_MAX_ATTEMPTS", 5) {
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误次数过多,请重新发送")
 	}
-	if !auth.ConstantTimeEqual(v.Code, in.Code) {
+	if !h.VCodes.VerifyCode(v.CodeHash, in.Code) {
 		_, _ = h.VCodes.IncrementAttempts(v.ID)
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误")
+	}
+
+	consumed, err := h.VCodes.ConsumeIfUnused(v.ID)
+	if err != nil || !consumed {
+		return echo.NewHTTPError(http.StatusBadRequest, "验证码已被使用")
 	}
 
 	hash, err := auth.HashPassword(in.NewPassword)
@@ -495,7 +466,6 @@ func (h *AuthHandler) resetPassword(c echo.Context) error {
 	if err := h.Users.SetPassword(u.ID, hash); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "更新密码失败")
 	}
-	_ = h.VCodes.MarkUsed(v.ID)
 	_ = h.ActivityLog.Record(model.ActivityLog{
 		UserID: u.ID, Username: u.Name, Email: u.Email,
 		Action: "user.password_reset", Detail: "通过邮件重置密码",
@@ -504,9 +474,8 @@ func (h *AuthHandler) resetPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"success": true, "message": "密码已重置,请使用新密码登录"})
 }
 
-// verifyEmailSend re-issues an email verification code for users who signed
-// up but didn't complete verification, OR users who are changing their email
-// (future). For phase 1 this covers the "I got unverified somehow" repair.
+// ─── /verify-email ───────────────────────────────────────────────────────
+
 func (h *AuthHandler) verifyEmailSend(c echo.Context) error {
 	type req struct {
 		Email string `json:"email"`
@@ -536,11 +505,10 @@ func (h *AuthHandler) verifyEmailSend(c echo.Context) error {
 	}
 
 	code := newCode()
-	_, err = h.VCodes.Issue(repository.IssueInput{
+	if _, err := h.VCodes.Issue(repository.IssueInput{
 		Email: u.Email, Code: code, Type: model.VCodeEmailVerify,
 		IP: ip, ExpiresAt: time.Now().Add(h.vcodeExpiry()),
-	})
-	if err != nil {
+	}); err != nil {
 		return c.JSON(http.StatusOK, body)
 	}
 
@@ -579,18 +547,22 @@ func (h *AuthHandler) verifyEmailConfirm(c echo.Context) error {
 	if v.Attempts >= h.Settings.GetInt("VERIFICATION_CODE_MAX_ATTEMPTS", 5) {
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误次数过多,请重新发送")
 	}
-	if !auth.ConstantTimeEqual(v.Code, in.Code) {
+	if !h.VCodes.VerifyCode(v.CodeHash, in.Code) {
 		_, _ = h.VCodes.IncrementAttempts(v.ID)
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误")
+	}
+	consumed, err := h.VCodes.ConsumeIfUnused(v.ID)
+	if err != nil || !consumed {
+		return echo.NewHTTPError(http.StatusBadRequest, "验证码已被使用")
 	}
 	if err := h.Users.MarkEmailVerified(u.ID); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "更新失败")
 	}
-	_ = h.VCodes.MarkUsed(v.ID)
 	return c.JSON(http.StatusOK, map[string]any{"success": true, "message": "邮箱已验证"})
 }
 
-// me returns the current session's user, or 401.
+// ─── /me /turnstile-config ───────────────────────────────────────────────
+
 func (h *AuthHandler) me(c echo.Context) error {
 	u := middleware.User(c)
 	if u == nil {
@@ -599,9 +571,6 @@ func (h *AuthHandler) me(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"user": toPublicUser(u)})
 }
 
-// turnstileConfig exposes whether Turnstile is enabled and the Site Key
-// (if so) to the frontend, which uses it to render the widget. The Site
-// Key is public by design.
 func (h *AuthHandler) turnstileConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"enabled": h.Turnstile.Enabled(),
@@ -609,9 +578,8 @@ func (h *AuthHandler) turnstileConfig(c echo.Context) error {
 	})
 }
 
-// ─── Shared helpers ──────────────────────────────────────────────────────
+// ─── Shared ─────────────────────────────────────────────────────────────
 
-// rateLimited formats a 429 with the standard Retry-After header.
 func rateLimited(c echo.Context, d ratelimit.Decision) error {
 	c.Response().Header().Set("Retry-After", itoa(d.RetryAfter))
 	return echo.NewHTTPError(http.StatusTooManyRequests,
@@ -625,11 +593,8 @@ func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-// ctxWithTimeout is a tiny helper for outbound calls inside handlers that
-// don't want to depend on the request context's cancellation timing. Not
-// currently used but kept — future favicon/email retries will want it.
 func ctxWithTimeout(d time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), d)
 }
 
-var _ = ctxWithTimeout // keep helper alive even if unused in phase 1
+var _ = ctxWithTimeout

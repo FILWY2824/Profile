@@ -1,12 +1,4 @@
-// Command qishu is the single-binary entry point. It:
-//   1. loads config from env
-//   2. opens the SQLite DB (runs migrations implicitly)
-//   3. seeds managed settings
-//   4. constructs all repositories, services, middleware
-//   5. starts Echo with graceful shutdown on SIGINT/SIGTERM
-//
-// Everything is constructed here and injected into handlers. No init() side
-// effects, no package-level globals, no hidden wiring.
+// Command qishu is the single-binary entry point.
 package main
 
 import (
@@ -46,7 +38,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	log.Printf("[boot] app_env=%s listen=%s data_dir=%s", cfg.AppEnv, cfg.ListenAddr, cfg.DataDir)
+	log.Printf("[boot] app_env=%s listen=%s data_dir=%s trust_proxy=%v",
+		cfg.AppEnv, cfg.ListenAddr, cfg.DataDir, cfg.TrustProxy)
+
+	// 把 TrustProxy 推给全局 ClientIP — 必须在任何请求处理之前。
+	ratelimit.SetTrustProxy(cfg.TrustProxy)
 
 	// DB
 	dbPath := filepath.Join(cfg.DataDir, "app.db")
@@ -56,8 +52,7 @@ func run() error {
 	}
 	defer sqldb.Close()
 
-	// Settings: seed env → DB on first run, then prefer DB on subsequent
-	// reads. Pass every env var that matches a Managed key as the seed map.
+	// Settings
 	envSeed := make(map[string]string)
 	for _, m := range settings.Managed {
 		if v := os.Getenv(m.Key); v != "" {
@@ -72,10 +67,16 @@ func run() error {
 	// Repositories
 	users := repository.NewUserRepo(sqldb.DB)
 	vcodes := repository.NewVCodeRepo(sqldb.DB)
+	pending := repository.NewPendingRepo(sqldb.DB)
 	sections := repository.NewSectionRepo(sqldb.DB)
 	cards := repository.NewCardRepo(sqldb.DB)
 	loginHist := repository.NewLoginHistoryRepo(sqldb.DB)
 	activityLog := repository.NewActivityLogRepo(sqldb.DB)
+	favicons := repository.NewFaviconRepo(sqldb.DB)
+	oauthClients := repository.NewOAuthClientRepo(sqldb.DB)
+	oauthCodes := repository.NewOAuthCodeRepo(sqldb.DB)
+	oauthTokens := repository.NewOAuthTokenRepo(sqldb.DB)
+	oauthGrants := repository.NewOAuthGrantRepo(sqldb.DB)
 
 	// Services
 	sessionDays := store.GetInt("SESSION_EXPIRY_DAYS", 7)
@@ -86,12 +87,16 @@ func run() error {
 	}
 	signer := auth.NewSigner(cfg.JWTSecret, time.Duration(sessionDays)*24*time.Hour)
 
+	// Email/Turnstile 是可热重载的对象,启动时从 settings 读取初值。
 	mailer := email.New(
 		store.Get("RESEND_API_KEY"),
 		store.Get("RESEND_FROM"),
 	)
 	if mailer.DevMode() {
-		log.Println("[boot] email sender = DEV MODE (codes echoed to stdout and response)")
+		log.Println("[boot] email sender = DEV MODE (codes echoed to stdout)")
+		if cfg.IsProduction() {
+			log.Println("[WARN] APP_ENV=production 但 RESEND_API_KEY 为空 — 验证码不会通过邮件发出,且不会回显到响应。请在管理后台配置邮件。")
+		}
 	}
 
 	tsEnabled := store.GetBool("TURNSTILE_ENABLED")
@@ -101,21 +106,9 @@ func run() error {
 	stopSweep := make(chan struct{})
 	limiter.StartSweep(stopSweep)
 
-	// Construct OAuth repos early — startPruner needs them, and several
-	// handlers below also reference them.
-	oauthClients := repository.NewOAuthClientRepo(sqldb.DB)
-	oauthCodes := repository.NewOAuthCodeRepo(sqldb.DB)
-	oauthTokens := repository.NewOAuthTokenRepo(sqldb.DB)
-	oauthGrants := repository.NewOAuthGrantRepo(sqldb.DB)
-
-	// Periodic retention / prune loop. Small, so it lives in main as an
-	// inline goroutine rather than a separate package — future extraction
-	// possible if it grows.
 	prunerStop := make(chan struct{})
-	startPruner(vcodes, loginHist, activityLog, oauthCodes, oauthTokens, store, prunerStop)
+	startPruner(vcodes, pending, loginHist, activityLog, oauthCodes, oauthTokens, store, prunerStop)
 
-	// Bootstrap admin from env (idempotent). Only creates if both vars set
-	// and no user with that email exists yet.
 	if err := bootstrapAdmin(cfg, users); err != nil {
 		log.Printf("[boot] admin bootstrap: %v", err)
 	}
@@ -124,22 +117,50 @@ func run() error {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
-	// Hard body cap. 1MB is plenty for any user-facing POST; anything bigger
-	// is either pathological or abuse.
+
+	// 1) body limit
 	e.Use(bodyLimit(1 << 20))
+	// 2) recover
 	e.Use(recoverer())
+	// 3) request log
 	e.Use(requestLogger(cfg))
+	// 4) CORS(可选)
 	if len(cfg.AllowedOrigins) > 0 {
 		e.Use(appmw.CORS(cfg.AllowedOrigins))
 	}
+	// 5) 安全响应头(全局)
+	e.Use(appmw.SecurityHeaders(appmw.SecurityHeadersConfig{
+		IsProduction: cfg.IsProduction(),
+		// Turnstile 资源放白名单(站点没启用 Turnstile 时也无害)
+		CSPExtraScriptSrc:  []string{"https://challenges.cloudflare.com"},
+		CSPExtraConnectSrc: []string{"https://challenges.cloudflare.com"},
+		CSPExtraFrameSrc:   []string{"https://challenges.cloudflare.com"},
+	}))
+	// 6) Session(读 cookie / Bearer 解析用户)
 	e.Use(appmw.Session(signer, users))
+	// 7) CSRF — OAuth 端点白名单(走 client credentials,不能用 cookie 校验)
+	e.Use(appmw.CSRF(appmw.CSRFConfig{
+		Secure: cfg.IsProduction(),
+		SkipPaths: []string{
+			"/api/oauth/token",
+			"/api/oauth/introspect",
+			"/api/oauth/revoke",
+			"/api/oauth/userinfo",
+		},
+	}))
 
 	api := e.Group("/api")
+	api.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+	api.GET("/csrf", func(c echo.Context) error {
+		// 给 SPA 启动时调用一次,确保 cookie 被下发。中间件已在响应头中
+		// 设置过,这里只是显式触发并回 200。
+		return c.JSON(http.StatusOK, map[string]any{"ok": true})
+	})
 
 	authH := &handler.AuthHandler{
 		Cfg: cfg, Signer: signer, Settings: store,
 		Email: mailer, Turnstile: ts, Limiter: limiter,
-		Users: users, VCodes: vcodes,
+		Users: users, VCodes: vcodes, Pending: pending,
 		LoginHistory: loginHist, ActivityLog: activityLog,
 	}
 	authH.Register(api.Group("/auth"))
@@ -147,28 +168,22 @@ func run() error {
 	pubH := &handler.PublicHandler{Sections: sections, Cards: cards}
 	pubH.Register(api)
 
-	// Favicon: the public read endpoint mounts on the root /api group (no
-	// auth needed); the admin endpoints mount under /api/admin/favicons
-	// (auth + admin guard applied below).
-	favicons := repository.NewFaviconRepo(sqldb.DB)
 	faviconH := handler.NewFaviconHandler(cards, favicons, activityLog)
 	faviconH.RegisterPublic(api)
 
-	// Account: per-user endpoints, must be authenticated.
 	accountH := &handler.AccountHandler{
-		Settings: store, Email: mailer, Limiter: limiter,
+		Cfg: cfg, Settings: store, Email: mailer, Limiter: limiter,
 		Users: users, VCodes: vcodes,
 		LoginHistory: loginHist, ActivityLog: activityLog,
 	}
 	accountG := api.Group("/account", appmw.MustAuth)
 	accountH.Register(accountG)
 
-	// Admin: every route below MustAdmin. We register sub-prefixes inside
-	// this group so each handler's Register() adds its own paths.
 	adminG := api.Group("/admin", appmw.MustAdmin)
 
 	(&handler.AdminUsersHandler{
 		Users: users, ActivityLog: activityLog,
+		OAuthTokens: oauthTokens, OAuthGrants: oauthGrants, OAuthCodes: oauthCodes,
 	}).Register(adminG.Group("/users"))
 
 	(&handler.AdminSectionsHandler{
@@ -181,6 +196,7 @@ func run() error {
 
 	(&handler.AdminSettingsHandler{
 		Settings: store, ActivityLog: activityLog,
+		Turnstile: ts, Email: mailer,
 	}).Register(adminG.Group("/settings"))
 
 	(&handler.AdminDashboardHandler{
@@ -192,13 +208,13 @@ func run() error {
 	}).Register(adminG)
 
 	(&handler.AdminRetentionHandler{
-		VCodes: vcodes, LoginHistory: loginHist, ActivityLog: activityLog,
+		VCodes: vcodes, Pending: pending,
+		LoginHistory: loginHist, ActivityLog: activityLog,
 		Settings: store, Audit: activityLog,
 	}).Register(adminG.Group("/retention"))
 
 	faviconH.RegisterAdmin(adminG.Group("/favicons"))
 
-	// ── OAuth2 server ──
 	oauthH := &handler.OAuthHandler{
 		Settings: store, Clients: oauthClients, Codes: oauthCodes,
 		Tokens: oauthTokens, Grants: oauthGrants,
@@ -207,20 +223,17 @@ func run() error {
 	oauthH.RegisterPublic(api.Group("/oauth"))
 	oauthH.RegisterAuthenticated(api.Group("/oauth", appmw.MustAuth))
 
-	// User-facing grant management lives under /api/account/oauth-grants.
 	(&handler.AccountGrantsHandler{
 		Grants: oauthGrants, Tokens: oauthTokens, Audit: activityLog,
 	}).Register(accountG.Group("/oauth-grants"))
 
-	// Admin OAuth client CRUD.
 	(&handler.AdminOAuthClientsHandler{
 		Clients: oauthClients, ActivityLog: activityLog,
+		Tokens: oauthTokens, Grants: oauthGrants, Codes: oauthCodes,
 	}).Register(adminG.Group("/oauth-clients"))
 
-	// SPA last — its catch-all matches anything unmatched above.
 	registerSPA(e)
 
-	// Graceful shutdown.
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           e,
@@ -253,20 +266,13 @@ func run() error {
 	return srv.Shutdown(ctx)
 }
 
-// bootstrapAdmin is an idempotent "create admin on first boot" step. It does
-// NOT mutate anything if:
-//   - ADMIN_EMAIL or ADMIN_PASSWORD is unset
-//   - a user with that email already exists
-//
-// This matches the operator expectation documented in .env.example — first
-// boot with both vars creates; subsequent boots are no-ops.
 func bootstrapAdmin(cfg *config.Config, users *repository.UserRepo) error {
 	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
 		return nil
 	}
 	addr := cfg.AdminEmail
 	if _, err := users.FindByEmail(addr); err == nil {
-		return nil // already exists
+		return nil
 	}
 	hash, err := auth.HashPassword(cfg.AdminPassword)
 	if err != nil {

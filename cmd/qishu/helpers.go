@@ -14,10 +14,6 @@ import (
 	"github.com/qishu/profile/internal/settings"
 )
 
-// bodyLimit rejects request bodies larger than n bytes with 413. Defence
-// against slow/large POST abuse at the first layer. Echo has a built-in
-// middleware for this, but rolling our own avoids the k/M/G suffix parsing
-// quirks.
 func bodyLimit(n int64) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -30,9 +26,6 @@ func bodyLimit(n int64) echo.MiddlewareFunc {
 	}
 }
 
-// recoverer turns panics into 500 responses with a stack trace in the log.
-// Echo ships a Recover middleware, but we log the stack directly to stderr
-// in our own format to match the rest of the log output.
 func recoverer() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) (err error) {
@@ -47,8 +40,6 @@ func recoverer() echo.MiddlewareFunc {
 	}
 }
 
-// requestLogger emits one log line per request. Format is stable for grep:
-// [http] method path status latency client-ip. No bodies logged.
 func requestLogger(cfg *config.Config) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -71,9 +62,6 @@ func requestLogger(cfg *config.Config) echo.MiddlewareFunc {
 }
 
 func clientIPForLog(c echo.Context) string {
-	// Echo's RealIP respects standard forwarding headers, but we already
-	// have ratelimit.ClientIP for the authoritative lookup — here it's
-	// just for the log line.
 	if v := c.Request().Header.Get("CF-Connecting-IP"); v != "" {
 		return v
 	}
@@ -83,17 +71,9 @@ func clientIPForLog(c echo.Context) string {
 	return c.RealIP()
 }
 
-// startPruner spins one goroutine that every 6 hours:
-//   - drops used/expired verification codes
-//   - trims login_history beyond the retention window
-//   - trims activity_log beyond the retention window
-//   - drops used/expired oauth_codes
-//   - drops revoked/replaced/fully-expired oauth_tokens
-//
-// Does a first pass 60 seconds after start so containers that have been
-// rebuilt after a long time-off reclaim space quickly.
 func startPruner(
 	vcodes *repository.VCodeRepo,
+	pending *repository.PendingRepo,
 	loginHist *repository.LoginHistoryRepo,
 	activityLog *repository.ActivityLogRepo,
 	oauthCodes *repository.OAuthCodeRepo,
@@ -105,6 +85,9 @@ func startPruner(
 		runOnce := func() {
 			if n, err := vcodes.PruneExpired(); err == nil && n > 0 {
 				log.Printf("[prune] verification_codes removed=%d", n)
+			}
+			if n, err := pending.PruneExpired(); err == nil && n > 0 {
+				log.Printf("[prune] pending_registrations removed=%d", n)
 			}
 
 			retainLogin := store.GetInt("LOGIN_HISTORY_RETENTION_DAYS", 30)
@@ -131,8 +114,6 @@ func startPruner(
 			}
 		}
 
-		// Initial short delay so it runs once shortly after boot but doesn't
-		// race the first-request path for DB contention.
 		first := time.NewTimer(60 * time.Second)
 		defer first.Stop()
 		select {

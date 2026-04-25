@@ -1,6 +1,5 @@
 // Package config loads process environment variables once at boot and exposes
-// them as a typed struct. Configuration that must be mutable at runtime lives
-// in the settings table (package internal/settings) — env vars are seeds only.
+// them as a typed struct.
 package config
 
 import (
@@ -9,9 +8,6 @@ import (
 	"strings"
 )
 
-// Config is the immutable snapshot of process-level configuration taken at
-// startup. Anything that should be tunable without a restart goes to the
-// settings table, not here.
 type Config struct {
 	ListenAddr      string
 	SiteURL         string
@@ -25,10 +21,14 @@ type Config struct {
 	AllowedOrigins  []string
 	TurnstileSite   string
 	TurnstileSecret string
+
+	// TrustProxy 决定 ratelimit.ClientIP 是否信任 X-Forwarded-For /
+	// X-Real-IP / CF-Connecting-IP。直接对外暴露则务必设 false,否则攻击者
+	// 可以伪造请求头绕过 IP 限流。部署在反代/Cloudflare 后面则设 true。
+	TrustProxy bool
 }
 
-// Load reads env vars and returns a validated Config. Fails fast in production
-// if any hard requirement is missing.
+// Load reads env vars and returns a validated Config.
 func Load() (*Config, error) {
 	c := &Config{
 		ListenAddr:      getEnv("LISTEN_ADDR", "0.0.0.0:8080"),
@@ -42,6 +42,7 @@ func Load() (*Config, error) {
 		DataDir:         getEnv("DATA_DIR", "./data"),
 		TurnstileSite:   strings.TrimSpace(os.Getenv("TURNSTILE_SITE_KEY")),
 		TurnstileSecret: strings.TrimSpace(os.Getenv("TURNSTILE_SECRET_KEY")),
+		TrustProxy:      parseBool(os.Getenv("TRUST_PROXY")),
 	}
 
 	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
@@ -58,21 +59,13 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
-// IsProduction reports whether the process is running in production mode.
-// Several security defaults (cookie Secure flag, strict JWT secret length,
-// etc.) flip on when this returns true.
 func (c *Config) IsProduction() bool { return c.AppEnv == "production" }
 
 func (c *Config) validate() error {
-	// JWT secret: length-checked because the default panic behaviour of
-	// jwt.Sign on empty key is confusing, and short keys are easy to brute.
-	// 32 bytes is the floor recommended by the HS256 spec authors.
 	if len(c.JWTSecret) < 32 {
 		if c.IsProduction() {
 			return fmt.Errorf("JWT_SECRET must be at least 32 chars in production (got %d)", len(c.JWTSecret))
 		}
-		// In dev, allow an empty/short secret but warn loudly so tests can
-		// still exercise the auth flow without operator ceremony.
 		fmt.Fprintln(os.Stderr, "[WARN] JWT_SECRET is weak/empty — DO NOT use this build in production")
 		if c.JWTSecret == "" {
 			c.JWTSecret = "dev-insecure-secret-do-not-use-in-production-x8b2n4k7q"
@@ -83,6 +76,10 @@ func (c *Config) validate() error {
 		return fmt.Errorf("LISTEN_ADDR is empty")
 	}
 
+	if c.IsProduction() && c.TrustProxy {
+		fmt.Fprintln(os.Stderr, "[INFO] TRUST_PROXY=1 — 信任前置代理上送的 X-Forwarded-For 等头。请确认服务前面确实有可信代理。")
+	}
+
 	return nil
 }
 
@@ -91,4 +88,12 @@ func getEnv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func parseBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }

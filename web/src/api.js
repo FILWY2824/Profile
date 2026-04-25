@@ -1,15 +1,42 @@
-// api.js — thin fetch wrapper. Always sends cookies (HttpOnly JWT)
-// and surfaces JSON errors as Error objects with .status and .body fields
-// so callers can branch cleanly on auth failures vs validation errors.
+// api.js — fetch wrapper.
+// - 自动从 cookie qishu_csrf 读取 CSRF token,放进 X-CSRF-Token 头
+// - 401/403 不会跳转,由调用方决定
+// - GET 不携带 body
+
+function readCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/[$()*+./?[\\\]^{|}]/g, "\\$&") + "=([^;]*)"));
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
+async function ensureCSRFCookie() {
+  if (readCookie("qishu_csrf")) return;
+  // GET /api/csrf 触发后端下发 cookie
+  try {
+    await fetch("/api/csrf", { credentials: "include" });
+  } catch {}
+}
 
 async function request(method, path, body, opts = {}) {
+  // 非安全方法:确保 CSRF cookie 已就位
+  if (method !== "GET" && method !== "HEAD") {
+    await ensureCSRFCookie();
+  }
+  const headers = { ...(opts.headers || {}) };
+  if (body !== undefined && body !== null && !(body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+  const csrf = readCookie("qishu_csrf");
+  if (csrf) {
+    headers["X-CSRF-Token"] = csrf;
+  }
+
   const init = {
     method,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    headers,
   };
   if (body !== undefined && body !== null) {
-    init.body = JSON.stringify(body);
+    init.body = body instanceof FormData ? body : JSON.stringify(body);
   }
   const r = await fetch("/api" + path, init);
   const ct = r.headers.get("content-type") || "";
@@ -39,15 +66,17 @@ export const api = {
   delete: (p, opts) => request("DELETE", p, null, opts),
 };
 
-// formPost is used by /api/oauth/token which requires
-// application/x-www-form-urlencoded per RFC 6749. Not used by the SPA
-// directly (we don't act as our own OAuth client) but exported for tools.
 export async function formPost(path, params) {
+  await ensureCSRFCookie();
   const body = new URLSearchParams(params).toString();
+  const csrf = readCookie("qishu_csrf");
   const r = await fetch("/api" + path, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
     body,
   });
   return r.json();

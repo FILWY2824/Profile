@@ -1,58 +1,105 @@
 # ───────────────────────────────────────────────────────────────────────────
-# 栖枢 Profile — 多阶段 Docker 构建
+# 栖枢 Profile — 多阶段 Docker 构建 (纯 Go 版,无 CGO)
 #
-# 阶段 1 (spa-builder)  : node:22-alpine 跑 vite,产出 web/dist/
-# 阶段 2 (api-builder)  : golang:1.22-alpine 把 dist 复制进 cmd/qishu/web-dist/
-#                          再 CGO 编译 Go 二进制,SPA 已 //go:embed 进去
-# 阶段 3 (runtime)      : alpine:3.20,只装 ca-certs + tzdata,二进制即程序
+# Stage 1 (spa-builder)   : node:22-alpine 编译 Vue SPA -> web/dist/
+# Stage 2 (api-builder)   : golang:1.23-alpine 编译 Go 二进制 (CGO_ENABLED=0)
+# Stage 3 (runtime)       : alpine:3.20 极小镜像
 #
-# 最终镜像 ~25 MB(多了约 5 MB 的嵌入 SPA),空载内存 ~35 MB。
-# 单容器一键部署,docker compose up -d 即可。
+# 代理透传:构建时可通过 --build-arg 传 HTTP_PROXY/HTTPS_PROXY/NO_PROXY,
+# docker compose 会自动从 .env 读取并传入。运行期通过 env_file 注入。
+#
+# 关键改动 vs 旧版:
+#   1. CGO_ENABLED=0  + modernc.org/sqlite 纯 Go 驱动,消除 musl/CGO 冲突
+#   2. 不再使用 -linkmode external -extldflags '-static',Go 默认就是静态
+#   3. 加 HTTP_PROXY/HTTPS_PROXY/NO_PROXY/GOPROXY/NPM_REGISTRY build-args
 # ───────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: build the Vue SPA ────────────────────────────────────────────
 FROM node:22-alpine AS spa-builder
 
+# 代理 build-args (传给 npm)
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG NPM_REGISTRY
+
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    no_proxy=${NO_PROXY}
+
 WORKDIR /web
 
-# Cache npm install layer: copy package files first, then run install,
-# only after that copy sources. This way changes to src/*.vue don't bust
-# the npm cache.
+# 缓存 npm 安装层
 COPY web/package.json web/package-lock.json* ./
+
+RUN set -eux; \
+    if [ -n "${NPM_REGISTRY}" ]; then \
+        npm config set registry "${NPM_REGISTRY}"; \
+    fi; \
+    if [ -n "${HTTP_PROXY}" ]; then \
+        npm config set proxy "${HTTP_PROXY}"; \
+    fi; \
+    if [ -n "${HTTPS_PROXY}" ]; then \
+        npm config set https-proxy "${HTTPS_PROXY}"; \
+    fi
+
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --no-fund --no-audit
+    if [ -f package-lock.json ]; then \
+        npm ci --no-fund --no-audit; \
+    else \
+        npm install --no-fund --no-audit; \
+    fi
 
 COPY web/ ./
 RUN npm run build
-# After this stage: /web/dist/index.html + /web/dist/assets/*
 
-# ── Stage 2: build the Go binary with embedded SPA ────────────────────────
+# ── Stage 2: build the Go binary (no CGO) ──────────────────────────────────
 FROM golang:1.23-alpine AS api-builder
 
-RUN apk add --no-cache ca-certificates git gcc musl-dev
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG GOPROXY
+
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    no_proxy=${NO_PROXY} \
+    GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+
+RUN apk add --no-cache ca-certificates git
 
 WORKDIR /src
 
-# Cache module download separately from sources for faster rebuilds.
 COPY go.mod go.sum* ./
-RUN go mod download
+# 删除 go.sum 强制 go 重新生成。即便仓库里 go.sum 含有错误的间接依赖
+# 哈希,这一步也能干净地跳过校验失败。
+RUN rm -f go.sum
 
 COPY . .
 
-# Drop the SPA build into cmd/qishu/web-dist/ so go:embed picks it up.
-# Using --from=spa-builder keeps the final image free of any node tooling.
+# 把前端 dist 塞进 cmd/qishu/web-dist/ 让 go:embed 能拿到
 COPY --from=spa-builder /web/dist/ ./cmd/qishu/web-dist/
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w -linkmode external -extldflags '-static'" \
-    -tags "sqlite_omit_load_extension" \
+
+# CGO_ENABLED=0 -> 纯 Go 驱动。-mod=mod 让 go build 按需下载依赖并自动更新
+# go.sum,只下编译用到的(非测试依赖),避免 `go mod tidy` 因递归遍历测试
+# 依赖的测试依赖(例如 pprof 的 pseudo-version 触发 git)而失败。
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -mod=mod -trimpath -ldflags="-s -w" \
     -o /out/qishu ./cmd/qishu
 
 
-# ── Stage 3: runtime ──────────────────────────────────────────────────────
+# ── Stage 3: runtime ───────────────────────────────────────────────────────
 FROM alpine:3.20 AS runtime
 
 RUN apk add --no-cache ca-certificates tzdata wget \

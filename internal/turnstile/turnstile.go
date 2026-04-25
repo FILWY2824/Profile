@@ -1,7 +1,7 @@
-// Package turnstile verifies Cloudflare Turnstile tokens against their
-// siteverify endpoint. The pattern mirrors the old JS implementation closely
-// so operator mental models carry over. Single rule: only enabled when both
-// keys are populated AND the enabled flag is on.
+// Package turnstile verifies Cloudflare Turnstile tokens.
+//
+// Reload semantics: Verifier 内部用 sync.RWMutex 包裹 secret/enabled,允许
+// admin 在管理后台修改 settings 后即时生效,无需重启容器。
 package turnstile
 
 import (
@@ -12,22 +12,19 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 const verifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
-// Verifier is the handle handlers use. Create one at boot; Go's http.Client
-// pool keeps outbound connections warm.
 type Verifier struct {
+	mu      sync.RWMutex
 	secret  string
 	enabled bool
 	client  *http.Client
 }
 
-// New returns a Verifier. It treats an empty secret or enabled=false as
-// "not configured" — Verify will succeed without a network call in that
-// case, mirroring the "turnstile feature flag off" semantics.
 func New(secret string, enabled bool) *Verifier {
 	return &Verifier{
 		secret:  strings.TrimSpace(secret),
@@ -36,19 +33,28 @@ func New(secret string, enabled bool) *Verifier {
 	}
 }
 
-// Enabled reports whether this Verifier will actually contact Cloudflare on
-// Verify(). Handlers expose this to the FE so the widget is only rendered
-// when needed.
-func (v *Verifier) Enabled() bool { return v.enabled }
+// Reload 在管理员保存设置后调用。无锁竞态:写入持有 Lock,读取走 RLock。
+func (v *Verifier) Reload(secret string, enabled bool) {
+	s := strings.TrimSpace(secret)
+	v.mu.Lock()
+	v.secret = s
+	v.enabled = enabled && s != ""
+	v.mu.Unlock()
+}
 
-// Verify asks Cloudflare whether token is valid for remoteIP. If the
-// verifier is disabled, returns nil (accept).
-//
-// Why we pass remoteIP: Cloudflare's rate-limit heuristics weight the
-// requesting IP; omitting it gives slightly less accurate results. It's
-// optional from Cloudflare's side.
+func (v *Verifier) Enabled() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.enabled
+}
+
 func (v *Verifier) Verify(ctx context.Context, token, remoteIP string) error {
-	if !v.enabled {
+	v.mu.RLock()
+	enabled := v.enabled
+	secret := v.secret
+	v.mu.RUnlock()
+
+	if !enabled {
 		return nil
 	}
 	if token == "" {
@@ -56,7 +62,7 @@ func (v *Verifier) Verify(ctx context.Context, token, remoteIP string) error {
 	}
 
 	form := url.Values{}
-	form.Set("secret", v.secret)
+	form.Set("secret", secret)
 	form.Set("response", token)
 	if remoteIP != "" {
 		form.Set("remoteip", remoteIP)

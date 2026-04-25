@@ -1,6 +1,9 @@
 // Package db owns the single SQLite handle for the process. It is deliberately
 // a thin wrapper: business code talks to repositories (internal/repository),
 // which hold a *sql.DB injected from here. No globals.
+//
+// 改动:从 github.com/mattn/go-sqlite3 (CGO) 切换到 modernc.org/sqlite (纯 Go),
+// 容器构建无需 CGO/musl,二进制完全静态。驱动名从 "sqlite3" 改成 "sqlite"。
 package db
 
 import (
@@ -8,49 +11,46 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed all:migrations
 var migrationFS embed.FS
 
-// DB wraps *sql.DB with a tiny convenience layer. We intentionally keep this
-// shallow — no ORM, no query builder — so every SQL statement in the code base
-// is greppable and auditable.
+// DB wraps *sql.DB.
 type DB struct {
 	*sql.DB
 }
 
-// Open creates (or opens) the SQLite database at path, applies pragmas that
-// are non-negotiable for this codebase, and runs pending migrations.
+// Open creates (or opens) the SQLite database at path, applies pragmas, and
+// runs pending migrations.
 //
-// The pragma list is a deliberate subset:
-//   - WAL for concurrent readers without blocking the single writer
-//   - foreign_keys=ON: SQLite's default is OFF (historical), and we rely on
-//     ON DELETE SET NULL / CASCADE behaviour
-//   - busy_timeout=5000: absorbs briefly-held write locks before returning
-//     SQLITE_BUSY to the caller
-//   - synchronous=NORMAL: pairs with WAL; FULL is overkill and hurts tps
+// modernc.org/sqlite uses a different DSN convention than mattn:
+// pragmas go through the `_pragma=name(value)` form. We set:
+//   - WAL journal mode for concurrent readers
+//   - foreign_keys=ON (off by default)
+//   - busy_timeout=5000 to absorb briefly-held write locks
+//   - synchronous=NORMAL (paired with WAL)
 func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir data dir: %w", err)
 	}
 
-	// mattn/go-sqlite3 uses `?_pragma_name=value` and a dedicated DSN key
-	// `_foreign_keys=on`. Pragmas run on every connection — matches what
-	// modernc does. The WAL pragma is persisted in the DB file itself
-	// after first write, so we set it once and it sticks.
-	dsn := fmt.Sprintf(
-		"file:%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000&_synchronous=NORMAL",
-		path,
-	)
-	raw, err := sql.Open("sqlite3", dsn)
+	q := url.Values{}
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "foreign_keys(ON)")
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "synchronous(NORMAL)")
+	dsn := fmt.Sprintf("file:%s?%s", path, q.Encode())
+
+	raw, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -72,11 +72,8 @@ func Open(path string) (*DB, error) {
 }
 
 // runMigrations replays every .sql file in migrations/ whose version is higher
-// than the value stored in SQLite's user_version pragma. All migrations for a
-// single step run inside one transaction so partial-failure halts the step.
-//
-// Files are named NNN_description.sql — NNN is the version number. We sort
-// numerically (not lexically) to avoid the 10-vs-2 ordering bug.
+// than the user_version pragma. All migrations for a single step run inside
+// one transaction.
 func (d *DB) runMigrations() error {
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
@@ -122,8 +119,6 @@ func (d *DB) runMigrations() error {
 			_ = tx.Rollback()
 			return fmt.Errorf("exec %s: %w", m.name, err)
 		}
-		// user_version pragma can't be parameterised; version number is an
-		// int from our own filename so no injection surface.
 		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", m.version)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("bump user_version for %s: %w", m.name, err)

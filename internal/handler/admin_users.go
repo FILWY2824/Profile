@@ -26,8 +26,11 @@ import (
 )
 
 type AdminUsersHandler struct {
-	Users       *repository.UserRepo
-	ActivityLog *repository.ActivityLogRepo
+	Users        *repository.UserRepo
+	ActivityLog  *repository.ActivityLogRepo
+	OAuthTokens  *repository.OAuthTokenRepo
+	OAuthGrants  *repository.OAuthGrantRepo
+	OAuthCodes   *repository.OAuthCodeRepo
 }
 
 func (h *AdminUsersHandler) Register(g *echo.Group) {
@@ -196,6 +199,18 @@ func (h *AdminUsersHandler) delete(c echo.Context) error {
 	if err := h.Users.Delete(id); err != nil {
 		return notFoundIfRepoMissing(err)
 	}
+
+	// 级联清理 OAuth 资源
+	if h.OAuthTokens != nil {
+		_, _ = h.OAuthTokens.DeleteByUserID(id)
+	}
+	if h.OAuthGrants != nil {
+		_, _ = h.OAuthGrants.DeleteByUserID(id)
+	}
+	if h.OAuthCodes != nil {
+		_, _ = h.OAuthCodes.DeleteByUserID(id)
+	}
+
 	_ = h.ActivityLog.Record(auditFromCtx(c, "admin.user_delete",
 		"管理员删除用户:"+target.Email, id))
 	return c.JSON(http.StatusOK, map[string]any{"success": true})

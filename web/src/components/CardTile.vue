@@ -1,85 +1,49 @@
 <template>
   <a
-    v-if="!card.locked"
     :href="card.url"
     target="_blank"
     rel="noopener noreferrer"
-    class="card group block p-4 transition-all hover:border-ink-300 hover:shadow-md"
+    class="surface-hover group block p-4"
   >
     <div class="flex items-start gap-3">
-      <img
-        v-if="iconUrl"
-        :src="iconUrl"
-        alt=""
-        class="h-8 w-8 flex-shrink-0 rounded"
-        @error="onIconError"
-      />
-      <div v-else class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-ink-100 text-xs text-ink-500">
-        {{ card.title.slice(0, 1) }}
+      <div class="h-10 w-10 rounded-lg bg-slate-100 ring-1 ring-slate-200/70 overflow-hidden flex-shrink-0 flex items-center justify-center">
+        <img
+          v-if="!iconFailed"
+          :src="iconURL"
+          @error="iconFailed = true"
+          class="h-6 w-6"
+          alt=""
+        />
+        <span v-else class="text-slate-400 font-medium text-sm">{{ initial }}</span>
       </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <h3 class="truncate font-medium text-ink-900 group-hover:text-ink-700">{{ card.title }}</h3>
-          <PermissionBadge :perm="card.permission" />
+      <div class="flex-1 min-w-0">
+        <div class="flex items-baseline gap-2">
+          <h3 class="font-semibold text-slate-900 truncate group-hover:text-accent-700 transition-colors">
+            {{ card.title }}
+          </h3>
         </div>
-        <p v-if="card.description" class="mt-1 line-clamp-2 text-sm text-ink-500">
-          {{ card.description }}
-        </p>
+        <p v-if="card.description" class="text-xs text-slate-500 mt-0.5 line-clamp-2">{{ card.description }}</p>
+        <div class="text-[11px] text-slate-400 mt-1.5 truncate font-mono">{{ originHost }}</div>
       </div>
     </div>
   </a>
-
-  <div
-    v-else
-    class="card relative cursor-not-allowed p-4 opacity-75"
-    :title="card.lockReason"
-  >
-    <div class="flex items-start gap-3">
-      <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-ink-100 text-ink-400">
-        🔒
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <h3 class="truncate font-medium text-ink-500">{{ card.title }}</h3>
-          <PermissionBadge :perm="card.permission" />
-        </div>
-        <p class="mt-1 text-xs text-ink-400">{{ card.lockReason }}</p>
-      </div>
-    </div>
-  </div>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
-import PermissionBadge from "./PermissionBadge.vue";
+import { computed, ref } from "vue";
+import { originOf } from "../format.js";
 
-const props = defineProps({ card: Object });
+const props = defineProps({ card: { type: Object, required: true } });
+const iconFailed = ref(false);
 
-const iconError = ref(false);
-
-// Derive favicon URL from the card URL's origin. The backend's public
-// favicon endpoint requires the origin be referenced by a card — which
-// it always will be here, since we're rendering that exact card.
-const iconUrl = computed(() => {
-  if (!props.card.url || iconError.value) return null;
-  try {
-    const u = new URL(props.card.url);
-    return `/api/favicons/image?origin=${encodeURIComponent(u.origin)}`;
-  } catch {
-    return null;
-  }
+const origin = computed(() => originOf(props.card.url));
+const originHost = computed(() => {
+  try { return new URL(props.card.url).host; } catch { return props.card.url; }
 });
-
-function onIconError() {
-  iconError.value = true;
-}
+const iconURL = computed(() =>
+  origin.value
+    ? `/api/favicons/image?origin=${encodeURIComponent(origin.value)}`
+    : ""
+);
+const initial = computed(() => (props.card.title || "?").charAt(0).toUpperCase());
 </script>
-
-<style scoped>
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-</style>

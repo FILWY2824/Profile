@@ -1,18 +1,7 @@
-// Package email sends transactional mail via Resend's HTTP API. There are
-// exactly three templates in the project (register verification, password
-// reset, password change) and they share a small amount of layout HTML.
+// Package email sends transactional mail via Resend's HTTP API.
 //
-// When ResendAPIKey is empty the sender enters "dev mode": it logs the
-// intended recipient + code to stdout instead of making a network call,
-// and returns the code so the handler can echo it in the HTTP response.
-// This is the cheapest way to let a local dev/test environment exercise
-// the full verify flow without a real mail account.
-//
-// Hard rules:
-//   - Every dynamic field rendered into HTML goes through htmlEscape().
-//     Siblings of this rule are how most mail-templating code ships XSS
-//     via "reset links" containing dangerous characters in the user's name.
-//   - No JS, no tracking pixels. The mail is text + a single CTA link.
+// Sender 是一个 wrapper,内部持有当前后端实现(ResendSender 或 ConsoleSender),
+// 允许 admin 在管理后台保存 RESEND_API_KEY/RESEND_FROM 后即时生效。
 package email
 
 import (
@@ -25,47 +14,84 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
-// Sender is the injectable interface. Production uses ResendSender; tests
-// and dev use ConsoleSender.
-type Sender interface {
-	Send(ctx context.Context, to, subject, html, text string) error
-	// DevMode reports whether this sender is a no-op echo. Handlers use this
-	// to decide whether to include the verification code in the JSON reply
-	// (extremely useful during manual testing; never true in production).
-	DevMode() bool
+// Sender 对外暴露的接口。Send 调用线程安全,Reload 也线程安全。
+type Sender struct {
+	mu       sync.RWMutex
+	apiKey   string
+	from     string
+	httpDone *http.Client
 }
 
-// New returns the right sender for the configured state.
-func New(apiKey, from string) Sender {
-	if apiKey == "" {
-		return &ConsoleSender{}
+func New(apiKey, from string) *Sender {
+	return &Sender{
+		apiKey:   strings.TrimSpace(apiKey),
+		from:     strings.TrimSpace(from),
+		httpDone: &http.Client{Timeout: 10 * time.Second},
 	}
-	return &ResendSender{apiKey: apiKey, from: from, http: &http.Client{Timeout: 10 * time.Second}}
 }
 
-// ConsoleSender is the dev-mode sink: prints what would have been sent and
-// returns nil.
-type ConsoleSender struct{}
+// Reload 切换 API Key/From,allowing admin 修改 settings 立即生效。
+func (s *Sender) Reload(apiKey, from string) {
+	s.mu.Lock()
+	s.apiKey = strings.TrimSpace(apiKey)
+	s.from = strings.TrimSpace(from)
+	s.mu.Unlock()
+}
 
-func (c *ConsoleSender) Send(_ context.Context, to, subject, _, text string) error {
-	fmt.Printf("\n--- [DEV EMAIL] ----------------------------------------\n")
-	fmt.Printf("To:      %s\n", to)
-	fmt.Printf("Subject: %s\n", subject)
-	fmt.Printf("%s\n", text)
-	fmt.Printf("--------------------------------------------------------\n\n")
+// DevMode 报告当前是否处于开发模式(API Key 留空)。开发模式下 Send 只打日志。
+func (s *Sender) DevMode() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.apiKey == ""
+}
+
+// Send 发送邮件。dev 模式打 stdout,生产用 Resend HTTP。
+func (s *Sender) Send(ctx context.Context, to, subject, htmlBody, textBody string) error {
+	s.mu.RLock()
+	apiKey := s.apiKey
+	from := s.from
+	client := s.httpDone
+	s.mu.RUnlock()
+
+	if apiKey == "" {
+		fmt.Printf("\n--- [DEV EMAIL] ----------------------------------------\n")
+		fmt.Printf("To:      %s\n", to)
+		fmt.Printf("Subject: %s\n", subject)
+		fmt.Printf("%s\n", textBody)
+		fmt.Printf("--------------------------------------------------------\n\n")
+		return nil
+	}
+
+	if from == "" {
+		return errors.New("RESEND_FROM 未设置,无法发件")
+	}
+
+	body := resendRequest{From: from, To: to, Subject: subject, HTML: htmlBody, Text: textBody}
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.resend.com/emails", bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		errMsg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("resend %d: %s", resp.StatusCode, string(errMsg))
+	}
 	return nil
-}
-
-func (c *ConsoleSender) DevMode() bool { return true }
-
-// ResendSender is the production implementation.
-type ResendSender struct {
-	apiKey string
-	from   string
-	http   *http.Client
 }
 
 type resendRequest struct {
@@ -76,77 +102,28 @@ type resendRequest struct {
 	Text    string `json:"text"`
 }
 
-func (r *ResendSender) Send(ctx context.Context, to, subject, htmlBody, textBody string) error {
-	if r.from == "" {
-		return errors.New("RESEND_FROM not configured")
+// ─── Templates ────────────────────────────────────────────────────────────
+
+func ComposeVerificationCode(siteName, action, code string, expiryMin int) (subject, htmlBody, textBody string) {
+	if siteName == "" {
+		siteName = "栖枢"
 	}
-	body, err := json.Marshal(resendRequest{
-		From: r.from, To: to, Subject: subject, HTML: htmlBody, Text: textBody,
-	})
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+r.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("resend %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
-	}
-	return nil
-}
-
-func (r *ResendSender) DevMode() bool { return false }
-
-// EscapeHTML is exported so handlers that build small ad-hoc HTML (e.g. the
-// OAuth consent page) can reuse the same escape rules.
-func EscapeHTML(s string) string {
-	return html.EscapeString(s)
-}
-
-// ─── Templates ──────────────────────────────────────────────────────────
-// Each Compose* function returns (subject, html, text). Templates are plain
-// string concatenation — there isn't enough variation to warrant text/template
-// and going with literals keeps grep-for-this-copy navigation easy.
-
-// ComposeVerificationCode renders the email for register / email-change / etc.
-// `purpose` is free-form text like "注册栖枢账号" that appears in the body.
-func ComposeVerificationCode(siteName, purpose, code string, expiresMinutes int) (subject, htmlBody, textBody string) {
-	safe := EscapeHTML(siteName)
-	safePurpose := EscapeHTML(purpose)
-	safeCode := EscapeHTML(code) // code is numeric but escape anyway as belt+braces
-
-	subject = fmt.Sprintf("[%s] 验证码:%s", siteName, code)
-
-	htmlBody = fmt.Sprintf(`<!DOCTYPE html>
-<html lang="zh"><head><meta charset="UTF-8"><title>%s</title></head>
-<body style="font-family:-apple-system,Segoe UI,sans-serif;background:#f6f7f9;padding:40px 20px;margin:0">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 10px rgba(0,0,0,0.05)">
-    <h2 style="margin:0 0 16px;color:#1a1a1a">%s</h2>
-    <p style="color:#555;line-height:1.6">你正在 <b>%s</b> %s。请在 <b>%d 分钟</b>内输入以下验证码:</p>
-    <div style="font-size:32px;font-weight:700;letter-spacing:6px;text-align:center;margin:24px 0;padding:20px;background:#f0f4ff;border-radius:8px;color:#1a5fff;font-family:ui-monospace,monospace">%s</div>
-    <p style="color:#888;font-size:13px;line-height:1.6;margin-top:24px">如果你并没有发起此操作,请忽略此邮件 — 无需任何操作。</p>
-  </div>
-</body></html>`, safe, safe, safe, safePurpose, expiresMinutes, safeCode)
-
+	subject = "[" + siteName + "] 验证码: " + code
 	textBody = fmt.Sprintf(`%s
 
-你正在 %s %s。
-请在 %d 分钟内输入以下验证码:
+你正在%s%s。请在 %d 分钟内输入以下验证码:
 
-    %s
+  %s
 
-如果你并没有发起此操作,请忽略此邮件。`, siteName, siteName, purpose, expiresMinutes, code)
-	return
+如果你并未发起此操作,请忽略本邮件。`, siteName, siteName, action, expiryMin, code)
+
+	htmlBody = `<!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;background:#f7fafc;padding:32px;color:#1a202c">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
+    <h2 style="margin:0 0 8px 0;font-size:18px;color:#2d3748">` + html.EscapeString(siteName) + `</h2>
+    <p style="margin:0 0 16px 0;color:#4a5568">你正在 ` + html.EscapeString(action) + `。请在 ` + fmt.Sprintf("%d", expiryMin) + ` 分钟内输入以下验证码:</p>
+    <div style="font-size:32px;font-weight:600;letter-spacing:8px;text-align:center;background:#edf2f7;padding:20px;border-radius:8px;color:#2d3748;font-family:'JetBrains Mono',monospace">` + html.EscapeString(code) + `</div>
+    <p style="margin:20px 0 0 0;color:#718096;font-size:13px">如果你并未发起此操作,请忽略本邮件。</p>
+  </div>
+</body></html>`
+	return subject, htmlBody, textBody
 }

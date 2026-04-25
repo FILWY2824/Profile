@@ -1,10 +1,21 @@
 <template>
-  <div class="mx-auto max-w-md text-center">
-    <div class="card p-8">
-      <div class="mb-2 text-6xl">🌫️</div>
-      <h1 class="mb-2 text-xl font-semibold text-ink-900">页面不存在</h1>
-      <p class="mb-4 text-sm text-ink-500">您访问的地址可能已被移除或拼写错误。</p>
-      <a href="#/" class="btn-primary">返回首页</a>
-    </div>
+  <div class="text-center py-20">
+    <div class="text-6xl mb-3">🔍</div>
+    <h1 class="h-page mb-2">页面未找到</h1>
+    <p class="text-muted">{{ message }}</p>
+    <a href="#/" class="btn-secondary mt-6">返回首页</a>
   </div>
 </template>
+
+<script setup>
+import { computed } from "vue";
+import { route } from "../router.js";
+import { currentUser } from "../session.js";
+
+const message = computed(() => {
+  if (route.path === "/admin" && (!currentUser.value || currentUser.value.role !== "admin")) {
+    return "需要管理员权限";
+  }
+  return route.path;
+});
+</script>

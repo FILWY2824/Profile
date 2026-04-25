@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,14 +53,28 @@ func (r *CardRepo) FindByID(id string) (*model.Card, error) {
 }
 
 // ReferencesOrigin reports whether any card currently links to a URL whose
-// origin matches. Used as the guard on /api/favicons/image — we only fetch
-// favicons for origins we already reference, which blocks the DoS/SSRF
-// vector where an attacker feeds arbitrary origins.
+// origin matches. 修复:用 `LIKE origin || '/%' ESCAPE '\'` + 等值兜底,
+// 防止类似 https://a.com 误命中 https://a.com.attacker.com 的前缀匹配,以及
+// origin 中包含 LIKE 元字符 _ % 时的误命中。
 func (r *CardRepo) ReferencesOrigin(origin string) (bool, error) {
+	// 转义 LIKE 元字符
+	esc := func(s string) string {
+		var b strings.Builder
+		for _, c := range s {
+			switch c {
+			case '\\', '%', '_':
+				b.WriteByte('\\')
+			}
+			b.WriteRune(c)
+		}
+		return b.String()
+	}
+	pattern := esc(origin) + "/%"
 	var n int
-	// LIKE prefix match is fine for origin — the origin form is scheme://host
-	// with no trailing slash; we match everything that starts with it.
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM cards WHERE url LIKE ? || '%'`, origin).Scan(&n)
+	err := r.db.QueryRow(
+		`SELECT COUNT(*) FROM cards WHERE url = ? OR url LIKE ? ESCAPE '\'`,
+		origin, pattern,
+	).Scan(&n)
 	if err != nil {
 		return false, err
 	}
@@ -128,4 +143,38 @@ func (r *CardRepo) Count() (int, error) {
 	var n int
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM cards`).Scan(&n)
 	return n, err
+}
+
+// URLsByOrigin 返回所有 URL 完整字符串,匹配同 origin 的卡片。供 favicon 抓取
+// 时按精确页面 URL 解析 <link rel="icon"> 用。
+func (r *CardRepo) URLsByOrigin(origin string) ([]string, error) {
+	esc := func(s string) string {
+		var b strings.Builder
+		for _, c := range s {
+			switch c {
+			case '\\', '%', '_':
+				b.WriteByte('\\')
+			}
+			b.WriteRune(c)
+		}
+		return b.String()
+	}
+	pattern := esc(origin) + "/%"
+	rows, err := r.db.Query(
+		`SELECT url FROM cards WHERE url = ? OR url LIKE ? ESCAPE '\'`,
+		origin, pattern,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }

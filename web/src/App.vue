@@ -1,13 +1,20 @@
 <template>
-  <div class="flex min-h-screen flex-col">
-    <NavBar />
+  <div class="min-h-screen flex flex-col">
+    <NavBar v-if="showChrome" />
 
-    <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8 mx-auto w-full max-w-6xl">
-      <component :is="resolvedView" />
+    <main :class="mainClass">
+      <component :is="resolvedView" v-if="sessionLoaded" />
+      <div v-else class="flex items-center justify-center py-32">
+        <div class="text-slate-400 text-sm">加载中…</div>
+      </div>
     </main>
 
-    <footer class="mt-auto border-t border-ink-100 bg-white py-3 text-center text-xs text-ink-400">
-      栖枢 · 0.3.0
+    <footer v-if="showChrome" class="mt-auto py-6 text-center text-xs text-slate-400">
+      <div class="space-x-2">
+        <span>栖枢 · 1.0</span>
+        <span class="text-slate-300">·</span>
+        <a href="https://github.com/" target="_blank" rel="noopener" class="hover:text-slate-600">源码</a>
+      </div>
     </footer>
 
     <Toaster />
@@ -42,11 +49,9 @@ const routes = [
 ];
 
 const match = makeMatcher(routes, NotFoundPage);
-
 const matched = computed(() => match(route.path));
 
 const resolvedView = computed(() => {
-  if (!sessionLoaded.value) return null;
   const m = matched.value;
   if (m.requiresAuth && !currentUser.value) return LoginPage;
   if (m.requiresAdmin && (!currentUser.value || currentUser.value.role !== "admin"))
@@ -54,9 +59,19 @@ const resolvedView = computed(() => {
   return m.view;
 });
 
+const showChrome = computed(() => route.path !== "/oauth/authorize");
+
+const mainClass = computed(() => {
+  if (route.path === "/admin") return "flex-1 w-full";
+  if (route.path.startsWith("/login") || route.path.startsWith("/register") || route.path.startsWith("/forgot"))
+    return "flex-1 flex items-center justify-center px-4 py-12";
+  if (route.path === "/oauth/authorize")
+    return "flex-1 flex items-center justify-center px-4 py-12";
+  return "flex-1 px-4 py-8 sm:px-6 lg:px-8 mx-auto w-full max-w-6xl";
+});
+
 onMounted(loadSession);
 
-// If session expires mid-session, kick to login.
 watch(currentUser, (v, old) => {
   if (old && !v && (matched.value.requiresAuth || matched.value.requiresAdmin)) {
     navigate("/login");

@@ -1,30 +1,13 @@
 // favicon.go — favicon proxy and admin management.
 //
-// Two distinct surfaces, deliberately separated:
-//
-//   PUBLIC READ — GET /api/favicons/image?origin=...
-//     Anyone (including anonymous viewers) can hit this. It returns the
-//     cached favicon for an origin. Two layers of protection:
-//
-//       1. Origin must already be referenced by some card (CardRepo
-//          .ReferencesOrigin). An attacker cannot ask the server to fetch
-//          arbitrary origins — only origins an admin has already vouched
-//          for via the cards UI.
-//
-//       2. Even after the cards-reference check, when we go fetch the icon
-//          on a cache miss, the SSRF guard resolves the host first and
-//          rejects private/loopback/cloud-metadata addresses. So an admin
-//          accidentally adding a card with URL http://169.254.169.254/...
-//          still won't leak metadata.
-//
-//   ADMIN MANAGEMENT — /api/admin/favicons/*
-//     Mounted under MustAdmin upstream. Lets admins:
-//       - GET   /         see what's been cached and inspect failures
-//       - POST  /refresh  force-refetch a single origin (bust cache)
-//       - DELETE /:origin remove a cached entry
-//
-//     Non-admins cannot reach any of these paths — Echo's MustAdmin
-//     middleware short-circuits with 403 before the handler runs.
+// 关键改进:
+//   - 抓 HTML 解析 <link rel="icon"> / <link rel="shortcut icon"> /
+//     <link rel="apple-touch-icon"> 拿到精确图标 URL,而不是粗暴地访问
+//     /favicon.ico(很多站点根域名根本没有 ico 文件,真正的图标走 link tag)
+//   - 优先使用某张已被卡片引用的页面 URL 抓 HTML(比如卡片 url 是
+//     https://github.com/anthropic/claude,就抓这个页面而不是 https://github.com)
+//   - SSRF 守护贯穿每一次跳转(HTML fetch 与 icon fetch 各自走 Resolve+Check)
+//   - Content-Type 白名单:image/* 才接受,防 HTML 误报为 favicon
 package handler
 
 import (
@@ -33,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -42,18 +26,17 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/net/html"
 
 	"github.com/qishu/profile/internal/repository"
 	"github.com/qishu/profile/internal/ssrf"
 	"github.com/qishu/profile/internal/urlsafe"
 )
 
-// FaviconHandler caps outbound requests at 8 seconds and 256 KB. Both are
-// generous defaults — favicons are tiny — but bound the impact of a
-// hostile origin returning a slow infinite stream.
 const (
 	faviconFetchTimeout = 8 * time.Second
 	faviconMaxBytes     = 256 * 1024
+	htmlMaxBytes        = 512 * 1024
 )
 
 type FaviconHandler struct {
@@ -61,15 +44,10 @@ type FaviconHandler struct {
 	Favicons    *repository.FaviconRepo
 	ActivityLog *repository.ActivityLogRepo
 
-	// In-flight dedup: when 50 viewers hit /favicons/image?origin=X at the
-	// same time and the cache is empty, only one outbound fetch should
-	// happen. This is the standard "thundering herd" mitigation.
 	inflightMu sync.Mutex
 	inflight   map[string]*sync.WaitGroup
 }
 
-// NewFaviconHandler wires up the inflight map. Required because Go's zero
-// value for a map is nil and we can't assign to a nil map.
 func NewFaviconHandler(cards *repository.CardRepo, favicons *repository.FaviconRepo, audit *repository.ActivityLogRepo) *FaviconHandler {
 	return &FaviconHandler{
 		Cards: cards, Favicons: favicons, ActivityLog: audit,
@@ -77,22 +55,16 @@ func NewFaviconHandler(cards *repository.CardRepo, favicons *repository.FaviconR
 	}
 }
 
-// RegisterPublic mounts the public read endpoint. Mount under /api (no
-// auth middleware required upstream).
 func (h *FaviconHandler) RegisterPublic(g *echo.Group) {
 	g.GET("/favicons/image", h.image)
 }
 
-// RegisterAdmin mounts the admin management endpoints. Mount under
-// /api/admin (MustAdmin already in the chain).
 func (h *FaviconHandler) RegisterAdmin(g *echo.Group) {
 	g.GET("", h.listAdmin)
 	g.POST("/refresh", h.refreshAdmin)
 	g.DELETE("/:origin", h.deleteAdmin)
 }
 
-// canonicalOrigin normalises scheme://host[:port] for cache lookups.
-// Returns "" if the input isn't a safe http(s) URL.
 func canonicalOrigin(raw string) string {
 	if !urlsafe.IsSafeHTTPURL(raw) {
 		return ""
@@ -106,7 +78,7 @@ func canonicalOrigin(raw string) string {
 	return scheme + "://" + host
 }
 
-// image is the public read handler.
+// image 公开读端点。
 func (h *FaviconHandler) image(c echo.Context) error {
 	originParam := c.QueryParam("origin")
 	origin := canonicalOrigin(originParam)
@@ -114,26 +86,19 @@ func (h *FaviconHandler) image(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "无效的 origin")
 	}
 
-	// Layer 1: must be referenced by at least one card.
 	referenced, err := h.Cards.ReferencesOrigin(origin)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
 	if !referenced {
-		// 404 is intentional — don't leak whether we'd accept it if it were
-		// referenced.
 		return echo.NewHTTPError(http.StatusNotFound, "未找到")
 	}
 
-	// Cache hit fast path.
 	if cached, err := h.Favicons.Get(origin); err == nil && cached.DataURL != "" {
 		return h.writeImageFromDataURL(c, cached.DataURL, cached.ContentType)
 	}
 
-	// Cache miss — fetch with thundering-herd dedup.
 	if err := h.fetchAndCache(c.Request().Context(), origin); err != nil {
-		// Record failure but still respond gracefully — the FE can show a
-		// fallback icon.
 		return echo.NewHTTPError(http.StatusBadGateway, "获取 favicon 失败")
 	}
 
@@ -144,17 +109,13 @@ func (h *FaviconHandler) image(c echo.Context) error {
 	return h.writeImageFromDataURL(c, cached.DataURL, cached.ContentType)
 }
 
-// fetchAndCache resolves the origin, dials with the SSRF guard, downloads
-// up to faviconMaxBytes, and stores the data: URL in the cache table.
-//
-// One fetch in flight per origin: callers contending for the same origin
-// share a sync.WaitGroup and only the first dispatcher hits the network.
+// fetchAndCache 主流程。修改:不再硬编码 /favicon.ico,而是先抓某张引用页面
+// 的 HTML,解析 link tag 拿真实 icon URL。如果 HTML 抓取或解析失败,再回退
+// /favicon.ico。
 func (h *FaviconHandler) fetchAndCache(parent context.Context, origin string) error {
 	h.inflightMu.Lock()
 	if wg, ok := h.inflight[origin]; ok {
 		h.inflightMu.Unlock()
-		// Wait for the first fetcher; cache should be populated when we
-		// resume.
 		wg.Wait()
 		return nil
 	}
@@ -173,25 +134,252 @@ func (h *FaviconHandler) fetchAndCache(parent context.Context, origin string) er
 	ctx, cancel := context.WithTimeout(parent, faviconFetchTimeout)
 	defer cancel()
 
-	// Layer 2: SSRF guard. Resolve the host and reject private ranges
-	// before we dial.
-	u, err := url.Parse(origin)
-	if err != nil {
-		return err
+	client := newGuardedHTTPClient()
+
+	// 1) 选一张该 origin 下的精确卡片 URL 作为 HTML 抓取目标
+	urls, _ := h.Cards.URLsByOrigin(origin)
+	htmlTarget := origin // 默认根
+	for _, u := range urls {
+		// 优先选 path 长度大于 1 的 URL(比根域名信息更多)
+		if pu, err := url.Parse(u); err == nil && len(pu.Path) > 1 {
+			htmlTarget = u
+			break
+		}
 	}
-	host := u.Hostname()
-	if _, err := ssrf.ResolveAndCheck(host); err != nil {
+	if htmlTarget == origin {
+		// 退而求其次:用 origin 根
+		htmlTarget = origin + "/"
+	}
+
+	// 2) 尝试抓 HTML,解析 <link rel="icon">
+	iconURL := h.discoverIconURL(ctx, client, htmlTarget)
+
+	// 3) 兜底:/favicon.ico
+	if iconURL == "" {
+		iconURL = strings.TrimRight(origin, "/") + "/favicon.ico"
+	}
+
+	// 4) 抓 icon 字节(含 SSRF 校验)
+	body, ct, err := h.fetchIconBytes(ctx, client, iconURL)
+	if err != nil {
 		_ = h.Favicons.Upsert(repository.FaviconRow{
-			Origin: origin, Source: "ssrf-blocked",
-			LastError: err.Error(),
+			Origin: origin, LastError: err.Error(), FailedAttempts: 1, Source: "fetch-failed",
 		})
 		return err
 	}
 
-	client := &http.Client{
+	dataURL := "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body)
+	return h.Favicons.Upsert(repository.FaviconRow{
+		Origin: origin, DataURL: dataURL, ContentType: ct,
+		Source: "html-link", FetchedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// discoverIconURL 抓 HTML 解析 <link rel> 拿 icon URL。返回绝对 URL 或 ""。
+func (h *FaviconHandler) discoverIconURL(ctx context.Context, client *http.Client, pageURL string) string {
+	pu, err := url.Parse(pageURL)
+	if err != nil {
+		return ""
+	}
+	if _, err := ssrf.ResolveAndCheck(pu.Hostname()); err != nil {
+		return ""
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "qishu-favicon-fetcher/2.0")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if ct != "" && !strings.Contains(strings.ToLower(ct), "html") {
+		return ""
+	}
+
+	doc, err := html.Parse(io.LimitReader(resp.Body, htmlMaxBytes))
+	if err != nil {
+		return ""
+	}
+
+	// 收集所有候选 link tag,根据 rel 优先级选择
+	type cand struct {
+		href     string
+		priority int // 数字越小越优先
+		size     int // 越大越优先(同 priority)
+	}
+	var cands []cand
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && strings.EqualFold(n.Data, "link") {
+			var rel, href, sizes, typ string
+			for _, a := range n.Attr {
+				switch strings.ToLower(a.Key) {
+				case "rel":
+					rel = strings.ToLower(a.Val)
+				case "href":
+					href = strings.TrimSpace(a.Val)
+				case "sizes":
+					sizes = a.Val
+				case "type":
+					typ = strings.ToLower(a.Val)
+				}
+			}
+			if href == "" {
+				goto next
+			}
+			// rel 可能含多个值,用空格分
+			rels := strings.Fields(rel)
+			pri := -1
+			for _, r := range rels {
+				switch r {
+				case "icon":
+					if pri < 0 || pri > 1 {
+						pri = 1
+					}
+				case "shortcut": // <link rel="shortcut icon">
+					if pri < 0 || pri > 2 {
+						pri = 2
+					}
+				case "apple-touch-icon", "apple-touch-icon-precomposed":
+					if pri < 0 || pri > 3 {
+						pri = 3
+					}
+				case "mask-icon":
+					if pri < 0 || pri > 5 {
+						pri = 5
+					}
+				}
+			}
+			if pri >= 0 {
+				// 偏好 PNG / SVG over ICO,因为多数 ICO 单一尺寸又难看
+				if typ == "image/png" || typ == "image/svg+xml" {
+					pri = pri // 保持
+				}
+				sz := parseSizeMax(sizes)
+				cands = append(cands, cand{href: href, priority: pri, size: sz})
+			}
+		}
+	next:
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+
+	if len(cands) == 0 {
+		return ""
+	}
+
+	// 选择:priority 最小,size 最大
+	best := cands[0]
+	for _, c := range cands[1:] {
+		if c.priority < best.priority {
+			best = c
+			continue
+		}
+		if c.priority == best.priority && c.size > best.size {
+			best = c
+		}
+	}
+
+	// 解析为绝对 URL
+	abs, err := pu.Parse(best.href)
+	if err != nil {
+		return ""
+	}
+	if abs.Scheme != "http" && abs.Scheme != "https" {
+		return ""
+	}
+	return abs.String()
+}
+
+func parseSizeMax(s string) int {
+	if s == "" || strings.EqualFold(s, "any") {
+		return 0
+	}
+	max := 0
+	for _, part := range strings.Fields(s) {
+		x := strings.SplitN(strings.ToLower(part), "x", 2)
+		if len(x) != 2 {
+			continue
+		}
+		v := 0
+		for _, ch := range x[0] {
+			if ch < '0' || ch > '9' {
+				v = 0
+				break
+			}
+			v = v*10 + int(ch-'0')
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+// fetchIconBytes 抓 icon 二进制,Content-Type 必须是 image/*。
+func (h *FaviconHandler) fetchIconBytes(ctx context.Context, client *http.Client, target string) ([]byte, string, error) {
+	pu, err := url.Parse(target)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := ssrf.ResolveAndCheck(pu.Hostname()); err != nil {
+		return nil, "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", "qishu-favicon-fetcher/2.0")
+	req.Header.Set("Accept", "image/*")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("status %s", resp.Status)
+	}
+
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]))
+	switch ct {
+	case "image/x-icon", "image/vnd.microsoft.icon", "image/png", "image/jpeg",
+		"image/gif", "image/webp", "image/svg+xml", "image/avif":
+	case "":
+		ct = "image/x-icon"
+	default:
+		// 不是图片就拒绝(防 HTML 错误页被当 favicon)
+		return nil, "", fmt.Errorf("不支持的 Content-Type:%s", ct)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, faviconMaxBytes))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(body) == 0 {
+		return nil, "", errors.New("empty body")
+	}
+	return body, ct, nil
+}
+
+// newGuardedHTTPClient 返回带 SSRF 拨号守卫的 HTTP client。
+func newGuardedHTTPClient() *http.Client {
+	return &http.Client{
 		Timeout: faviconFetchTimeout,
-		// Dial through a guarded dialer so a redirect mid-fetch can't
-		// drop us into a private range.
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				h, _, _ := net.SplitHostPort(addr)
@@ -207,56 +395,9 @@ func (h *FaviconHandler) fetchAndCache(parent context.Context, origin string) er
 			ResponseHeaderTimeout: 5 * time.Second,
 		},
 	}
-
-	target := strings.TrimRight(origin, "/") + "/favicon.ico"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "qishu-favicon-fetcher/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		_ = h.Favicons.Upsert(repository.FaviconRow{
-			Origin: origin, LastError: err.Error(), FailedAttempts: 1,
-		})
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		_ = h.Favicons.Upsert(repository.FaviconRow{
-			Origin: origin, LastError: "http " + resp.Status, FailedAttempts: 1,
-		})
-		return errors.New("status " + resp.Status)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, faviconMaxBytes))
-	if err != nil {
-		return err
-	}
-	if len(body) == 0 {
-		return errors.New("empty body")
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "image/x-icon"
-	}
-	dataURL := "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body)
-
-	return h.Favicons.Upsert(repository.FaviconRow{
-		Origin: origin, DataURL: dataURL, ContentType: ct,
-		Source: "fetch", FetchedAt: time.Now().UTC().Format(time.RFC3339),
-	})
 }
 
-// writeImageFromDataURL parses a stored data: URL and writes the raw bytes
-// with proper Content-Type. Cheaper than re-parsing on every request would
-// be to store the bytes binary, but data: URLs make manual SQL inspection
-// readable.
 func (h *FaviconHandler) writeImageFromDataURL(c echo.Context, dataURL, fallbackType string) error {
-	// dataURL format: data:<ct>;base64,<payload>
 	const prefix = "data:"
 	if !strings.HasPrefix(dataURL, prefix) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "缓存数据损坏")
@@ -276,9 +417,6 @@ func (h *FaviconHandler) writeImageFromDataURL(c echo.Context, dataURL, fallback
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "缓存数据损坏")
 	}
-
-	// Weak ETag — a hash of the content. Browsers will revalidate when
-	// it changes (we never invalidate manually; admin "refresh" overwrites).
 	hash := md5.Sum(bytes)
 	etag := `"` + hex.EncodeToString(hash[:8]) + `"`
 	c.Response().Header().Set("ETag", etag)
@@ -289,14 +427,13 @@ func (h *FaviconHandler) writeImageFromDataURL(c echo.Context, dataURL, fallback
 	return c.Blob(http.StatusOK, ct, bytes)
 }
 
-// ─── Admin management ────────────────────────────────────────────────────
+// ─── Admin ────────────────────────────────────────────────────────────────
 
 func (h *FaviconHandler) listAdmin(c echo.Context) error {
 	rows, err := h.Favicons.List()
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
-	// Don't ship the data URL bytes back — admin UI just wants the metadata.
 	type adminRow struct {
 		Origin         string `json:"origin"`
 		ContentType    string `json:"contentType"`
@@ -329,18 +466,17 @@ func (h *FaviconHandler) refreshAdmin(c echo.Context) error {
 	if origin == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "无效的 origin")
 	}
-	// Even from the admin path, run the cards-referenced check. An admin
-	// can still cause an SSRF if they refresh an arbitrary origin without
-	// adding a card first; force them to add the card.
 	referenced, err := h.Cards.ReferencesOrigin(origin)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
 	if !referenced {
 		return echo.NewHTTPError(http.StatusBadRequest, "该 origin 未被任何卡片引用")
 	}
+	// 刷新前先删旧记录,避免缓存命中。
+	_ = h.Favicons.Delete(origin)
 	if err := h.fetchAndCache(c.Request().Context(), origin); err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+		return echo.NewHTTPError(http.StatusBadGateway, "获取失败:"+err.Error())
 	}
 	_ = h.ActivityLog.Record(auditFromCtx(c, "admin.favicon_refresh",
 		"刷新 favicon:"+origin, origin))

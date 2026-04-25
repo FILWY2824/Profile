@@ -1,184 +1,176 @@
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
-      <button @click="open()" class="btn-primary">新建 OAuth 应用</button>
-    </div>
-    <div class="card overflow-x-auto">
+    <header class="flex items-center justify-between">
+      <div>
+        <h1 class="h-page">OAuth 客户端</h1>
+        <p class="text-muted text-sm mt-1">{{ items.length }} 个已注册客户端</p>
+      </div>
+      <button @click="openCreate" class="btn-primary">+ 新建客户端</button>
+    </header>
+
+    <div class="surface overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-ink-50 text-left text-xs uppercase text-ink-500">
+        <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
           <tr>
-            <th class="px-4 py-2">client_id</th>
-            <th class="px-4 py-2">名称</th>
-            <th class="px-4 py-2">最低等级</th>
-            <th class="px-4 py-2">状态</th>
-            <th class="px-4 py-2 text-right">操作</th>
+            <th class="px-4 py-2.5 text-left font-medium">名称</th>
+            <th class="px-4 py-2.5 text-left font-medium">Client ID</th>
+            <th class="px-4 py-2.5 text-left font-medium">最低等级</th>
+            <th class="px-4 py-2.5 text-left font-medium">状态</th>
+            <th class="px-4 py-2.5"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-ink-100">
-          <tr v-for="c in items" :key="c.id">
-            <td class="px-4 py-2 font-mono text-xs text-ink-900">{{ c.clientId }}</td>
-            <td class="px-4 py-2 text-ink-700">{{ c.name }}</td>
-            <td class="px-4 py-2 text-ink-700">{{ ["user", "member", "admin"][c.minLevel] }}</td>
-            <td class="px-4 py-2">
-              <span class="badge" :class="c.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-ink-100 text-ink-600'">{{ c.status }}</span>
-            </td>
-            <td class="px-4 py-2 text-right">
-              <button @click="rotate(c)" class="btn-secondary mr-1">轮换密钥</button>
-              <button @click="open(c)" class="btn-secondary mr-1">编辑</button>
-              <button @click="del(c)" class="btn-danger">删除</button>
+        <tbody class="divide-y divide-slate-100">
+          <tr v-for="c in items" :key="c.id" class="hover:bg-slate-50">
+            <td class="px-4 py-2.5 font-medium">{{ c.name }}</td>
+            <td class="px-4 py-2.5 font-mono text-xs">{{ c.clientId }}</td>
+            <td class="px-4 py-2.5 text-xs">{{ levelLabel(c.minLevel) }}</td>
+            <td class="px-4 py-2.5"><span :class="c.status === 'active' ? 'badge-emerald' : 'badge-slate'">{{ c.status }}</span></td>
+            <td class="px-4 py-2.5 text-right whitespace-nowrap">
+              <button @click="openEdit(c)" class="btn-ghost btn-sm">编辑</button>
+              <button @click="onRotate(c)" class="btn-ghost btn-sm">轮换密钥</button>
+              <button @click="onDelete(c)" class="btn-ghost btn-sm text-red-600">删除</button>
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="!items.length && !loading" class="p-6 text-center text-ink-500">无应用</div>
     </div>
 
-    <Modal v-if="form" :title="form.id ? '编辑应用' : '新建应用'" @close="form = null">
-      <form @submit.prevent="save" class="space-y-3">
-        <div v-if="!form.id">
-          <label class="mb-1 block text-sm">client_id</label>
-          <input v-model="form.clientId" type="text" required class="input font-mono text-xs" pattern="[a-zA-Z0-9\-_]+" />
+    <Modal v-model="modalOpen" :title="editing?.id ? '编辑客户端' : '新建客户端'">
+      <div v-if="editing" class="space-y-3">
+        <div><label class="label">应用名称</label><input v-model="editing.name" class="input" /></div>
+        <div v-if="!editing.id">
+          <label class="label">Client ID(字母数字短横线)</label>
+          <input v-model="editing.clientId" class="input-mono" />
+        </div>
+        <div><label class="label">描述</label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">主页 URL</label><input v-model="editing.homepageUrl" class="input-mono" /></div>
+          <div><label class="label">Logo URL</label><input v-model="editing.logoUrl" class="input-mono" /></div>
         </div>
         <div>
-          <label class="mb-1 block text-sm">名称</label>
-          <input v-model="form.name" type="text" required class="input" />
+          <label class="label">回调 URI(每行一个)</label>
+          <textarea v-model="redirectURIsText" rows="3" class="input-mono" placeholder="https://app.example.com/callback"></textarea>
         </div>
         <div>
-          <label class="mb-1 block text-sm">描述</label>
-          <textarea v-model="form.description" rows="2" class="input resize-y"></textarea>
+          <label class="label">允许的 Scopes(空格分隔)</label>
+          <input v-model="scopesText" class="input-mono" placeholder="openid profile email" />
         </div>
-        <div>
-          <label class="mb-1 block text-sm">主页 URL</label>
-          <input v-model="form.homepageUrl" type="url" class="input" />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">最低用户等级</label>
+            <select v-model.number="editing.minLevel" class="input">
+              <option :value="0">普通用户</option>
+              <option :value="1">成员</option>
+              <option :value="2">管理员</option>
+            </select>
+          </div>
+          <div v-if="editing.id">
+            <label class="label">状态</label>
+            <select v-model="editing.status" class="input">
+              <option value="active">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label class="mb-1 block text-sm">Logo URL</label>
-          <input v-model="form.logoUrl" type="url" class="input" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm">最低账号等级</label>
-          <select v-model.number="form.minLevel" class="input">
-            <option :value="0">user — 任意登录用户</option>
-            <option :value="1">member — 会员及以上</option>
-            <option :value="2">admin — 仅管理员</option>
-          </select>
-        </div>
-        <div>
-          <label class="mb-1 block text-sm">允许的 redirect URI(每行一个)</label>
-          <textarea v-model="form.redirectUrisText" rows="2" required class="input resize-y font-mono text-xs"></textarea>
-        </div>
-        <div>
-          <label class="mb-1 block text-sm">允许的 scope(空格分隔)</label>
-          <input v-model="form.scopesText" type="text" class="input font-mono text-xs" placeholder="openid profile email" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm">状态</label>
-          <select v-model="form.status" class="input">
-            <option value="active">active</option>
-            <option value="disabled">disabled</option>
-          </select>
-        </div>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" @click="form = null" class="btn-secondary">取消</button>
-          <button :disabled="busy" class="btn-primary">{{ busy ? "保存中…" : "保存" }}</button>
-        </div>
-      </form>
+      </div>
+      <template #footer>
+        <button @click="modalOpen = false" class="btn-secondary">取消</button>
+        <button @click="onSave" :disabled="busy" class="btn-primary">{{ busy ? '保存中…' : '保存' }}</button>
+      </template>
     </Modal>
 
-    <Modal v-if="newSecret" title="客户端密钥(仅展示一次)" @close="newSecret = null">
-      <p class="mb-2 text-sm text-ink-700">
-        请妥善保存以下密钥,关闭此窗口后将无法再次查看。
-      </p>
-      <pre class="overflow-x-auto rounded-md bg-ink-50 p-3 text-xs font-mono text-ink-900">{{ newSecret }}</pre>
-      <div class="mt-3 flex justify-end">
-        <button @click="copy(newSecret); newSecret = null" class="btn-primary">已复制并关闭</button>
+    <Modal v-model="secretOpen" title="客户端密钥(仅展示一次)">
+      <div class="space-y-3">
+        <div class="text-sm text-amber-700 bg-amber-50 ring-1 ring-amber-200/70 rounded-lg p-3">
+          请立即复制并妥善保管。关闭后无法再次查看。
+        </div>
+        <div>
+          <label class="label">Client ID</label>
+          <input :value="secretInfo.clientId" readonly class="input-mono" />
+        </div>
+        <div>
+          <label class="label">Client Secret</label>
+          <input :value="secretInfo.clientSecret" readonly class="input-mono" />
+        </div>
       </div>
+      <template #footer>
+        <button @click="copySecret" class="btn-secondary">复制密钥</button>
+        <button @click="secretOpen = false" class="btn-primary">已保存,关闭</button>
+      </template>
     </Modal>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import Modal from "../Modal.vue";
 
 const items = ref([]);
-const loading = ref(true);
-const form = ref(null);
+const modalOpen = ref(false);
+const secretOpen = ref(false);
+const editing = ref(null);
 const busy = ref(false);
-const newSecret = ref(null);
+const secretInfo = ref({});
 
-async function load() {
-  loading.value = true;
-  try {
-    const r = await api.get("/admin/oauth-clients");
-    items.value = r.items || [];
-  } finally {
-    loading.value = false;
-  }
+const redirectURIsText = computed({
+  get: () => (editing.value?.redirectUris || []).join("\n"),
+  set: (v) => { editing.value.redirectUris = v.split(/\r?\n/).map((x) => x.trim()).filter(Boolean); },
+});
+const scopesText = computed({
+  get: () => (editing.value?.scopes || []).join(" "),
+  set: (v) => { editing.value.scopes = v.split(/\s+/).filter(Boolean); },
+});
+
+const levelLabel = (n) => ({0:"用户",1:"成员",2:"管理员"})[n] || n;
+
+async function load() { const r = await api.get("/admin/oauth-clients"); items.value = r.items || []; }
+function openCreate() {
+  editing.value = { name: "", clientId: "", description: "", homepageUrl: "", logoUrl: "",
+                    minLevel: 0, redirectUris: [], scopes: ["openid","profile"], status: "active" };
+  modalOpen.value = true;
 }
+function openEdit(c) { editing.value = { ...c }; modalOpen.value = true; }
 
-function open(c) {
-  form.value = c
-    ? {
-        id: c.id, clientId: c.clientId, name: c.name, description: c.description || "",
-        homepageUrl: c.homepageUrl || "", logoUrl: c.logoUrl || "",
-        minLevel: c.minLevel || 0,
-        redirectUrisText: (c.redirectUris || []).join("\n"),
-        scopesText: (c.scopes || []).join(" "),
-        status: c.status,
-      }
-    : {
-        id: null, clientId: "", name: "", description: "",
-        homepageUrl: "", logoUrl: "", minLevel: 0,
-        redirectUrisText: "", scopesText: "openid", status: "active",
-      };
-}
-
-async function save() {
+async function onSave() {
   busy.value = true;
   try {
-    const payload = {
-      clientId: form.value.clientId,
-      name: form.value.name,
-      description: form.value.description,
-      homepageUrl: form.value.homepageUrl,
-      logoUrl: form.value.logoUrl,
-      minLevel: form.value.minLevel,
-      redirectUris: form.value.redirectUrisText.split("\n").map((s) => s.trim()).filter(Boolean),
-      scopes: form.value.scopesText.split(/\s+/).filter(Boolean),
-      status: form.value.status,
-    };
-    if (form.value.id) {
-      await api.patch(`/admin/oauth-clients/${form.value.id}`, payload);
-      okToast("已保存");
+    const body = { ...editing.value };
+    let res;
+    if (editing.value.id) {
+      await api.patch("/admin/oauth-clients/" + editing.value.id, body);
     } else {
-      const r = await api.post("/admin/oauth-clients", payload);
-      newSecret.value = r.clientSecret;
-      okToast("已创建");
+      res = await api.post("/admin/oauth-clients", body);
     }
-    form.value = null;
+    modalOpen.value = false;
     await load();
+    if (res?.clientSecret) {
+      secretInfo.value = res;
+      secretOpen.value = true;
+    } else {
+      okToast("已保存");
+    }
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 
-async function rotate(c) {
+async function onRotate(c) {
   if (!confirm(`轮换 ${c.name} 的密钥?旧密钥将立即失效。`)) return;
   try {
-    const r = await api.post(`/admin/oauth-clients/${c.id}/rotate-secret`);
-    newSecret.value = r.clientSecret;
+    const res = await api.post("/admin/oauth-clients/" + c.id + "/rotate-secret");
+    secretInfo.value = res;
+    secretOpen.value = true;
   } catch (e) { errToast(e.message); }
 }
 
-async function del(c) {
-  if (!confirm(`删除应用「${c.name}」?现有授权将立即失效。`)) return;
-  try { await api.delete(`/admin/oauth-clients/${c.id}`); okToast("已删除"); await load(); }
+async function onDelete(c) {
+  if (!confirm(`删除 ${c.name}?将连同所有 token / 授权一并清除。`)) return;
+  try { await api.delete("/admin/oauth-clients/" + c.id); okToast("已删除"); await load(); }
   catch (e) { errToast(e.message); }
 }
 
-function copy(s) {
-  navigator.clipboard?.writeText(s).catch(() => {});
+function copySecret() {
+  navigator.clipboard?.writeText(secretInfo.value.clientSecret || "").then(() => okToast("已复制"));
 }
 
 onMounted(load);

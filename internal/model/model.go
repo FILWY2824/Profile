@@ -76,7 +76,8 @@ type Card struct {
 type VerificationCode struct {
 	ID        string
 	Email     string
-	Code      string
+	Code      string // 兼容字段(已不写入,新代码读 CodeHash)
+	CodeHash  string
 	Type      string
 	IP        string
 	Meta      string // JSON blob; contents depend on Type

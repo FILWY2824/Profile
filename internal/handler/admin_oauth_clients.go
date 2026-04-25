@@ -34,6 +34,9 @@ import (
 type AdminOAuthClientsHandler struct {
 	Clients     *repository.OAuthClientRepo
 	ActivityLog *repository.ActivityLogRepo
+	Tokens      *repository.OAuthTokenRepo
+	Grants      *repository.OAuthGrantRepo
+	Codes       *repository.OAuthCodeRepo
 }
 
 func (h *AdminOAuthClientsHandler) Register(g *echo.Group) {
@@ -234,6 +237,16 @@ func (h *AdminOAuthClientsHandler) delete(c echo.Context) error {
 	}
 	if err := h.Clients.Delete(id); err != nil {
 		return notFoundIfRepoMissing(err)
+	}
+	// 级联清理
+	if h.Tokens != nil {
+		_, _ = h.Tokens.DeleteByClientID(target.ClientID)
+	}
+	if h.Grants != nil {
+		_, _ = h.Grants.DeleteByClientID(target.ClientID)
+	}
+	if h.Codes != nil {
+		_, _ = h.Codes.DeleteByClientID(target.ClientID)
 	}
 	_ = h.ActivityLog.Record(auditFromCtx(c, "admin.oauth_client_delete",
 		"删除 OAuth 客户端:"+target.Name, id))

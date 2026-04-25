@@ -25,6 +25,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/qishu/profile/internal/auth"
+	"github.com/qishu/profile/internal/config"
 	"github.com/qishu/profile/internal/email"
 	"github.com/qishu/profile/internal/middleware"
 	"github.com/qishu/profile/internal/model"
@@ -35,8 +36,9 @@ import (
 )
 
 type AccountHandler struct {
+	Cfg          *config.Config
 	Settings     *settings.Store
-	Email        email.Sender
+	Email        *email.Sender
 	Limiter      ratelimit.Limiter
 	Users        *repository.UserRepo
 	VCodes       *repository.VCodeRepo
@@ -138,7 +140,7 @@ func (h *AccountHandler) passwordSendCode(c echo.Context) error {
 	_ = h.Email.Send(ctx, u.Email, subject, htmlBody, textBody)
 
 	body := map[string]any{"success": true, "message": "验证码已发送至您的邮箱"}
-	if h.Email.DevMode() {
+	if h.Cfg != nil && !h.Cfg.IsProduction() {
 		body["devCode"] = code
 	}
 	return c.JSON(http.StatusOK, body)
@@ -175,7 +177,7 @@ func (h *AccountHandler) passwordChange(c echo.Context) error {
 	if v.Attempts >= h.Settings.GetInt("VERIFICATION_CODE_MAX_ATTEMPTS", 5) {
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误次数过多,请重新发送")
 	}
-	if !auth.ConstantTimeEqual(v.Code, in.Code) {
+	if !h.VCodes.VerifyCode(v.CodeHash, in.Code) {
 		_, _ = h.VCodes.IncrementAttempts(v.ID)
 		return echo.NewHTTPError(http.StatusBadRequest, "验证码错误")
 	}
@@ -187,7 +189,11 @@ func (h *AccountHandler) passwordChange(c echo.Context) error {
 	if err := h.Users.SetPassword(u.ID, hash); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "更新失败")
 	}
-	_ = h.VCodes.MarkUsed(v.ID)
+	consumed, _ := h.VCodes.ConsumeIfUnused(v.ID)
+	if !consumed {
+		// 极少见的并发(同一用户同一时间的两次提交)。已经修改密码,放任日志即可。
+		_ = consumed
+	}
 	_ = h.ActivityLog.Record(auditFromCtx(c, "account.password_change", "用户修改密码", ""))
 
 	return c.JSON(http.StatusOK, map[string]any{

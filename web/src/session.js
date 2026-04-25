@@ -1,5 +1,3 @@
-// session.js — global auth state. Single source of truth for "who am I"
-// across the SPA. When a route loads, it can call `loadSession()` to refresh.
 import { ref, computed } from "vue";
 import { api } from "./api.js";
 
@@ -20,11 +18,7 @@ export async function loadSession() {
     const r = await api.get("/auth/me");
     currentUser.value = r.user || null;
   } catch (e) {
-    if (e.status === 401) {
-      currentUser.value = null;
-    } else {
-      console.warn("loadSession error:", e);
-    }
+    if (e.status === 401) currentUser.value = null;
   } finally {
     sessionLoaded.value = true;
   }
