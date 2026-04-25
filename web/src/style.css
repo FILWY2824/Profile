@@ -3,32 +3,35 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   栖枢档案 · Editorial Archive
-   设计 token 与组件类。修改时请保持"克制的编辑感",不要加圆角与阴影,
-   优先用 hairline 边框与 paper / ink / cinnabar 三色对比。
+   Constellation Dashboard · 全局样式
+   设计要点:
+     - 深空蓝底 (#0A0E1A) + 玻璃 surface
+     - 大圆角, 细 ring 边框替代厚 box-shadow (省 GPU)
+     - 青绿主品牌色 #2DD4BF, 蓝色辅助 accent #3B82F6
+     - 装饰: 顶部/角落微弱径向光晕 (background-image 一次, 不动画)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --paper:        #FBF7EE;
-  --paper-2:      #F5EEDC;
-  --paper-3:      #ECE2C8;
-  --ink:          #16130E;
-  --ink-2:        #2A271F;
-  --ash:          #6B6354;
-  --ash-2:        #918A7A;
-  --rule:         #1F1B14;
-  --rule-soft:    rgba(31, 27, 20, 0.18);
-  --rule-softer:  rgba(31, 27, 20, 0.10);
-  --rule-faint:   rgba(31, 27, 20, 0.06);
-  --cinnabar:     #B33A2A;
-  --cinnabar-deep:#7B2418;
-  --sage:         #5C7A6B;
-  --ochre:        #B5832C;
-  --rust:         #8C3A20;
-
-  /* Fraunces variation axes */
-  --fraunces-soft-display: "SOFT" 60, "opsz" 144;
-  --fraunces-soft-body:    "SOFT" 30, "opsz" 14;
+  --bg-0:      #070B14;
+  --bg-1:      #0A0E1A;
+  --bg-2:      #0F1729;
+  --bg-3:      #161D2F;
+  --bg-4:      #1E2740;
+  --surface:   #161D2F;
+  --surface-hi:#1E2740;
+  --line:      rgba(148, 163, 184, 0.12);
+  --line-strong: rgba(148, 163, 184, 0.22);
+  --line-faint:  rgba(148, 163, 184, 0.06);
+  --fg:        #E2E8F0;
+  --fg-dim:    #94A3B8;
+  --fg-mute:   #64748B;
+  --fg-faint:  #475569;
+  --teal-300:  #2DD4BF;
+  --teal-400:  #14B8A6;
+  --sky-400:   #3B82F6;
+  --ok:        #10B981;
+  --warn:      #F59E0B;
+  --danger:    #F43F5E;
 }
 
 @layer base {
@@ -39,449 +42,483 @@
   }
 
   body {
-    background-color: var(--paper);
-    color: var(--ink);
+    background-color: var(--bg-1);
+    color: var(--fg);
     font-family: theme('fontFamily.sans');
     min-height: 100vh;
-    /* 极淡的纸张纹理:对角斜线 + 微噪点。Noise via SVG data-uri,极轻量。 */
+    /* 极轻量的氛围光: 只用两个 radial-gradient, 无动画, 不影响低性能服务器渲染.
+       附着 fixed 让滚动时不会重绘. */
     background-image:
-      /* 轻噪点 (paper grain) */
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.086  0 0 0 0 0.075  0 0 0 0 0.055  0 0 0 0.04 0'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>"),
-      /* 顶部温暖光晕 */
-      radial-gradient(at 50% -10%, rgba(179, 58, 42, 0.04), transparent 55%),
-      /* 右下青苔阴影 */
-      radial-gradient(at 100% 100%, rgba(92, 122, 107, 0.05), transparent 60%);
+      radial-gradient(1200px 600px at 80% -10%, rgba(45, 212, 191, 0.06), transparent 60%),
+      radial-gradient(900px 500px at 0% 110%, rgba(59, 130, 246, 0.05), transparent 55%);
     background-attachment: fixed;
-    background-size: 220px 220px, auto, auto;
   }
 
   ::selection {
-    background-color: rgba(179, 58, 42, 0.18);
-    color: var(--ink);
+    background-color: rgba(45, 212, 191, 0.28);
+    color: #fff;
   }
 
-  hr {
-    border: 0;
-    border-top: 1px solid var(--rule-soft);
-  }
+  hr { border: 0; border-top: 1px solid var(--line); }
 
-  /* form 控件继承字体 */
-  input, textarea, select, button { font-family: inherit; }
+  input, textarea, select, button { font-family: inherit; color: inherit; }
 
-  /* 链接默认朱砂下划线 */
   a {
-    color: var(--cinnabar);
-    text-decoration-color: rgba(179, 58, 42, 0.4);
-    text-underline-offset: 0.18em;
+    color: var(--teal-300);
+    text-decoration: none;
   }
-  a:hover { color: var(--cinnabar-deep); }
+  a:hover { color: #5EEAD4; }
 }
 
 @layer components {
 
-  /* ── Surface (纸面) ──────────────────────────────────────────────
-     编辑档案不是"白卡片+阴影",而是"羊皮纸贴在纸面上",所以 surface 用
-     paper-50 + hairline 边框,不带阴影。surface-elevated 用于强调时多
-     一道极淡的下沉阴影。 */
+  /* ── Surface ─────────────────────────────────────────────────
+     surface = 玻璃质感卡片: 半透明深面 + 1px 内描边, 无厚 shadow.
+     省 GPU, 在低端设备也能稳定 60fps. */
   .surface {
-    background-color: #FEFCF7;
-    border: 1px solid var(--rule-soft);
-    border-radius: 3px;
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
   }
   .surface-soft {
-    background-color: rgba(254, 252, 247, 0.6);
-    border: 1px solid var(--rule-softer);
-    border-radius: 3px;
+    background-color: rgba(22, 29, 47, 0.55);
+    border: 1px solid var(--line-faint);
+    border-radius: 14px;
   }
-  .surface-elevated {
-    background-color: #FEFCF7;
-    border: 1px solid var(--rule-soft);
-    border-radius: 3px;
-    box-shadow: 0 1px 0 0 rgba(31, 27, 20, 0.08), 0 8px 24px -16px rgba(31, 27, 20, 0.18);
+  .surface-hi {
+    background-color: var(--surface-hi);
+    border: 1px solid var(--line-strong);
+    border-radius: 16px;
+  }
+  .surface-glass {
+    background-color: rgba(22, 29, 47, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--line);
+    border-radius: 16px;
   }
   .surface-hover {
-    background-color: #FEFCF7;
-    border: 1px solid var(--rule-soft);
-    border-radius: 3px;
-    transition: border-color 200ms ease, transform 200ms ease, background-color 200ms ease;
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
   }
   .surface-hover:hover {
-    border-color: var(--ink);
-    background-color: #FEFCF7;
+    border-color: rgba(45, 212, 191, 0.4);
+    background-color: var(--surface-hi);
     transform: translateY(-1px);
   }
 
-  /* ── Buttons ─────────────────────────────────────────────────────
-     设计语言: 锐边、hairline 边框、字间距略宽。primary 用墨黑底白字
-     (像盖在纸上的活字印章),accent 用朱砂底白字。 */
+  /* ── Buttons ────────────────────────────────────────────────
+     现代 pill 形按钮. primary = 青绿 fill. ghost / secondary 走透明描边.
+     不用大 box-shadow, 高对比 + ring 表达层级. */
   .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: inline-flex; align-items: center; justify-content: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    border-radius: 2px;
-    font-size: 0.8125rem;
-    font-weight: 500;
+    border-radius: 10px;
+    font-size: 0.875rem; font-weight: 500;
     line-height: 1.2;
-    letter-spacing: 0.02em;
+    letter-spacing: -0.005em;
     border: 1px solid transparent;
-    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 100ms ease;
-    cursor: pointer;
-    user-select: none;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 80ms ease;
+    cursor: pointer; user-select: none;
+    color: var(--fg);
   }
   .btn:focus-visible {
-    outline: 2px solid var(--cinnabar);
+    outline: 2px solid var(--teal-300);
     outline-offset: 2px;
   }
-  .btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
   .btn-primary {
-    background-color: var(--ink);
-    color: var(--paper);
-    border-color: var(--ink);
+    background-color: var(--teal-300);
+    color: #062521;
+    border-color: var(--teal-300);
+    font-weight: 600;
   }
   .btn-primary:hover:not(:disabled) {
-    background-color: var(--ink-2);
-    border-color: var(--ink-2);
+    background-color: #5EEAD4;
+    border-color: #5EEAD4;
   }
   .btn-primary:active:not(:disabled) { transform: translateY(1px); }
-  .btn-accent {
-    background-color: var(--cinnabar);
-    color: #FEFCF7;
-    border-color: var(--cinnabar);
-  }
-  .btn-accent:hover:not(:disabled) {
-    background-color: var(--cinnabar-deep);
-    border-color: var(--cinnabar-deep);
-  }
+
   .btn-secondary {
     background-color: transparent;
-    color: var(--ink);
-    border-color: var(--ink);
+    border-color: var(--line-strong);
+    color: var(--fg);
   }
   .btn-secondary:hover:not(:disabled) {
-    background-color: var(--ink);
-    color: var(--paper);
-  }
-  .btn-ghost {
-    background-color: transparent;
-    color: var(--ink);
-    border-color: transparent;
-  }
-  .btn-ghost:hover:not(:disabled) {
-    background-color: rgba(31, 27, 20, 0.06);
-  }
-  .btn-danger {
-    background-color: transparent;
-    color: var(--rust);
-    border-color: var(--rust);
-  }
-  .btn-danger:hover:not(:disabled) {
-    background-color: var(--rust);
-    color: #FEFCF7;
-  }
-  .btn-sm {
-    padding: 0.3125rem 0.625rem;
-    font-size: 0.75rem;
-    letter-spacing: 0.04em;
+    background-color: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.4);
   }
 
-  /* ── Inputs ──────────────────────────────────────────────────────
-     hairline 底边设计,聚焦时变朱砂。比通用 ring 框更"印刷感"。 */
-  .input {
+  .btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--fg-dim);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background-color: rgba(148, 163, 184, 0.08);
+    color: var(--fg);
+  }
+
+  .btn-accent {
+    background-color: var(--sky-400);
+    color: #fff;
+    border-color: var(--sky-400);
+    font-weight: 600;
+  }
+  .btn-accent:hover:not(:disabled) {
+    background-color: #60A5FA;
+    border-color: #60A5FA;
+  }
+
+  .btn-danger {
+    background-color: transparent;
+    color: var(--danger);
+    border-color: rgba(244, 63, 94, 0.4);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background-color: rgba(244, 63, 94, 0.12);
+    border-color: var(--danger);
+  }
+
+  .btn-sm {
+    padding: 0.3125rem 0.75rem;
+    font-size: 0.8125rem;
+    border-radius: 8px;
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────
+     盒型为主 (深底 + ring border), 聚焦时青绿描边. 不再用 hairline
+     底边样式 — 那是编辑感, 这里要现代工具感. */
+  .input,
+  .input-mono,
+  .input-box,
+  textarea.input,
+  textarea.input-mono,
+  select.input {
     display: block;
     width: 100%;
-    background-color: transparent;
-    color: var(--ink);
-    padding: 0.5rem 0.125rem 0.4375rem;
+    background-color: rgba(7, 11, 20, 0.45);
+    color: var(--fg);
+    padding: 0.625rem 0.875rem;
     font-size: 0.875rem;
     line-height: 1.4;
-    border: 0;
-    border-bottom: 1px solid var(--rule-soft);
-    border-radius: 0;
-    transition: border-color 150ms ease, padding-bottom 150ms ease;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
   }
-  .input::placeholder {
-    color: var(--ash-2);
-    font-style: italic;
+  .input::placeholder,
+  .input-mono::placeholder,
+  .input-box::placeholder,
+  textarea::placeholder {
+    color: var(--fg-faint);
   }
-  .input:hover:not(:focus) { border-bottom-color: var(--ash); }
-  .input:focus {
+  .input:hover:not(:focus),
+  .input-mono:hover:not(:focus),
+  .input-box:hover:not(:focus),
+  textarea:hover:not(:focus),
+  select:hover:not(:focus) {
+    border-color: rgba(148, 163, 184, 0.4);
+  }
+  .input:focus,
+  .input-mono:focus,
+  .input-box:focus,
+  textarea:focus,
+  select:focus {
     outline: none;
-    border-bottom-color: var(--cinnabar);
-    border-bottom-width: 2px;
-    padding-bottom: calc(0.4375rem - 1px);
+    border-color: var(--teal-300);
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
+    background-color: rgba(7, 11, 20, 0.65);
   }
-  /* "盒型"输入框 — 用于多行文本,有边框 */
-  .input-box {
-    display: block;
-    width: 100%;
-    background-color: rgba(254, 252, 247, 0.7);
-    color: var(--ink);
-    padding: 0.625rem 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    border: 1px solid var(--rule-soft);
-    border-radius: 2px;
-    transition: border-color 150ms ease, background-color 150ms ease;
-  }
-  .input-box::placeholder {
-    color: var(--ash-2);
-    font-style: italic;
-  }
-  .input-box:hover:not(:focus) { border-color: var(--ash); }
-  .input-box:focus {
-    outline: none;
-    border-color: var(--cinnabar);
-    background-color: #FEFCF7;
-  }
-  .input-mono {
-    font-family: theme('fontFamily.mono');
-    font-size: 0.8125rem;
-  }
+  .input-mono { font-family: theme('fontFamily.mono'); font-size: 0.8125rem; }
+
   .label {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--fg-dim);
+    margin-bottom: 0.4375rem;
+    letter-spacing: -0.005em;
+  }
+
+  /* ── Badge ──────────────────────────────────────────────────
+     现代风: 小圆角填充 + 半透明背景, 不用 全大写编辑感. */
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    padding: 0.1875rem 0.5rem;
     font-family: theme('fontFamily.mono');
     font-size: 0.6875rem;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    color: var(--ash);
-    margin-bottom: 0.375rem;
-  }
-  .label::before {
-    content: "—";
-    color: var(--cinnabar);
-    font-weight: 600;
-  }
-
-  /* ── Badge ───────────────────────────────────────────────────────
-     徽章用 mono 字体 + 全大写 + 大字距,做出"档案盖章"的小标签感。 */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.1875rem 0.4375rem;
-    font-family: theme('fontFamily.mono');
-    font-size: 0.625rem;
-    font-weight: 500;
-    line-height: 1;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
+    line-height: 1.2;
+    letter-spacing: -0.005em;
     border: 1px solid currentColor;
-    border-radius: 1px;
+    border-radius: 999px;
+    background-color: transparent;
   }
-  .badge-ink     { color: var(--ink); }
-  .badge-cinnabar{ color: var(--cinnabar); }
-  .badge-sage    { color: var(--sage); }
-  .badge-ochre   { color: var(--ochre); }
-  .badge-rust    { color: var(--rust); }
-  .badge-ash     { color: var(--ash); }
+  /* 兼容旧 admin 代码的 alias - 全部映射到现代 chip 样式 */
+  .badge-slate, .badge-ash {
+    color: var(--fg-dim);
+    background-color: rgba(148, 163, 184, 0.10);
+    border-color: rgba(148, 163, 184, 0.25);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    font-family: theme('fontFamily.mono');
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .badge-emerald, .badge-sage {
+    color: #34D399;
+    background-color: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    font-family: theme('fontFamily.mono');
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .badge-red, .badge-rust {
+    color: #FB7185;
+    background-color: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    font-family: theme('fontFamily.mono');
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .badge-amber, .badge-ochre {
+    color: #FBBF24;
+    background-color: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    font-family: theme('fontFamily.mono');
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .badge-accent, .badge-cinnabar, .badge-ink {
+    color: var(--teal-300);
+    background-color: rgba(45, 212, 191, 0.10);
+    border: 1px solid rgba(45, 212, 191, 0.32);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    font-family: theme('fontFamily.mono');
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
 
-  /* 兼容旧 admin tabs 引用的 badge 别名 — 重定向到新 palette */
-  .badge-slate   { color: var(--ash); }
-  .badge-accent  { color: var(--cinnabar); }
-  .badge-emerald { color: var(--sage); }
-  .badge-red     { color: var(--rust); }
-  .badge-amber   { color: var(--ochre); }
-  /* 实心填充版 */
-  .badge-solid-ink {
-    color: var(--paper);
-    background-color: var(--ink);
-    border-color: var(--ink);
-  }
-  .badge-solid-cinnabar {
-    color: #FEFCF7;
-    background-color: var(--cinnabar);
-    border-color: var(--cinnabar);
-  }
-
-  /* ── Typography helpers ──────────────────────────────────────────
-     版式语言:
-       - h-page: 页大标题, Fraunces, 极紧字距, opsz>100
-       - h-section: 章节标题, Fraunces serif, 中等大小
-       - eyebrow: 上方"卷宗号", mono 字体全大写 + 极宽字距
-       - rule: hairline 横线 */
+  /* ── Typography ─────────────────────────────────────────── */
   .h-page {
     font-family: theme('fontFamily.display');
-    font-weight: 500;
-    font-size: clamp(2rem, 4.5vw, 3.25rem);
-    line-height: 1.05;
-    letter-spacing: -0.035em;
-    color: var(--ink);
-    font-variation-settings: "opsz" 144, "SOFT" 50;
+    font-weight: 700;
+    font-size: clamp(1.75rem, 3.6vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--fg);
   }
   .h-section {
     font-family: theme('fontFamily.display');
-    font-weight: 500;
-    font-size: 1.375rem;
-    line-height: 1.2;
-    letter-spacing: -0.02em;
-    color: var(--ink);
-    font-variation-settings: "opsz" 60, "SOFT" 40;
+    font-weight: 600;
+    font-size: 1.25rem;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    color: var(--fg);
   }
   .h-sub {
     font-family: theme('fontFamily.display');
-    font-weight: 500;
-    font-size: 1.0625rem;
-    line-height: 1.25;
-    letter-spacing: -0.015em;
-    color: var(--ink);
-    font-variation-settings: "opsz" 24;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    color: var(--fg);
   }
-  .eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.625rem;
+  .text-muted, .text-ash, .text-fg-dim { color: var(--fg-dim); }
+  .text-tinted, .text-fg-mute { color: var(--fg-mute); }
+  .text-fg { color: var(--fg); }
+  .text-teal { color: var(--teal-300); }
+  .text-sky  { color: var(--sky-400); }
+  .text-ok   { color: var(--ok); }
+  .text-warn { color: var(--warn); }
+  .text-danger { color: var(--danger); }
+
+  /* 旧别名兼容 */
+  .text-ink         { color: var(--fg); }
+  .text-ink-2       { color: var(--fg); }
+  .text-ash-2       { color: var(--fg-mute); }
+  .text-cinnabar    { color: var(--teal-300); }
+  .text-cinnabar-deep { color: var(--teal-400); }
+  .text-sage        { color: #34D399; }
+  .text-rust        { color: var(--danger); }
+  .text-ochre       { color: var(--warn); }
+
+  /* 旧 archive-no 字样 — 重定向为现代 mono caption */
+  .archive-no, .archive-no-strong {
     font-family: theme('fontFamily.mono');
     font-size: 0.6875rem;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.3em;
-    color: var(--ash);
+    color: var(--fg-mute);
+    letter-spacing: 0;
+    text-transform: none;
   }
-  .eyebrow::before {
-    content: "";
-    display: inline-block;
-    width: 1.5rem;
-    height: 1px;
-    background-color: var(--cinnabar);
-  }
-  .text-muted   { color: var(--ash); }
-  .text-tinted  { color: var(--ash-2); }
-  .text-ink     { color: var(--ink); }
-  .text-cinnabar{ color: var(--cinnabar); }
-  .text-sage    { color: var(--sage); }
-  .text-rust    { color: var(--rust); }
+  .archive-no-strong { color: var(--fg-dim); font-weight: 600; }
 
-  /* ── Rule (hairline 装饰线) ──────────────────────────────────── */
-  .rule-h {
-    height: 1px;
-    background-color: var(--rule-soft);
-  }
-  .rule-h-strong {
-    height: 1px;
-    background-color: var(--ink);
-  }
-  .rule-double {
-    height: 4px;
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--rule-soft);
-  }
+  /* 旧 rule 横线 */
+  .rule-h        { height: 1px; background-color: var(--line); }
+  .rule-h-strong { height: 1px; background-color: var(--line-strong); }
+  .rule-double   { height: 1px; background-color: var(--line-strong); }
 
-  /* ── Tab pills (admin sidebar) ───────────────────────────────── */
+  /* ── Tab pill (admin sidebar) ─────────────────────────────── */
   .tab-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
+    display: flex; align-items: center; gap: 0.625rem;
     width: 100%;
     text-align: left;
     padding: 0.5rem 0.75rem;
-    font-family: theme('fontFamily.mono');
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--ash);
-    border-radius: 2px;
+    color: var(--fg-dim);
+    border-radius: 8px;
     border: 1px solid transparent;
-    transition: all 150ms ease;
+    transition: all 140ms ease;
     cursor: pointer;
     background: transparent;
   }
   .tab-pill:hover {
-    color: var(--ink);
-    background-color: rgba(31, 27, 20, 0.04);
+    color: var(--fg);
+    background-color: rgba(148, 163, 184, 0.06);
   }
   .tab-pill-active {
-    color: var(--paper);
-    background-color: var(--ink);
-    border-color: var(--ink);
+    color: #062521;
+    background-color: var(--teal-300);
+    border-color: var(--teal-300);
+    font-weight: 600;
   }
   .tab-pill-active:hover {
-    color: var(--paper);
-    background-color: var(--ink-2);
+    color: #062521;
+    background-color: #5EEAD4;
   }
 
-  /* ── 印鉴 logo (栖字朱砂方印) ────────────────────────────────── */
-  .seal {
+  /* ── Logo / Sigil ────────────────────────────────────────────
+     新 logo: 圆角方块 + 中心闪光. 不再用"栖"汉字, 用纯几何 SVG. */
+  .sigil {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    background-color: var(--cinnabar);
-    color: var(--paper);
-    font-family: theme('fontFamily.display');
-    font-size: 1.125rem;
-    font-weight: 700;
-    border-radius: 2px;
-    box-shadow: 0 0 0 0.5px rgba(179, 58, 42, 0.4);
+    border-radius: 9px;
+    background: linear-gradient(160deg, #2DD4BF, #0EA5B7 70%, #0E7490);
+    box-shadow: 0 6px 18px -6px rgba(45, 212, 191, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
     position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
   }
-  .seal::after {
+  .sigil::after {
+    /* 中心 4 角星, 用纯 CSS path 实现 */
     content: "";
-    position: absolute;
-    inset: 2px;
-    border: 1px dashed rgba(251, 247, 238, 0.45);
-    border-radius: 1px;
-    pointer-events: none;
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 6 L17.5 14.5 L26 16 L17.5 17.5 L16 26 L14.5 17.5 L6 16 L14.5 14.5 Z' fill='white'/></svg>");
+    background-size: 70% 70%;
+    background-position: center;
+    background-repeat: no-repeat;
   }
-  .seal-lg {
-    width: 3rem;
-    height: 3rem;
-    font-size: 1.75rem;
+  .sigil-lg {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 14px;
+  }
+  .sigil-xl {
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 18px;
   }
 
-  /* ── 章节序号(罗马数字徽标) ──────────────────────────────────── */
-  .archive-no {
-    font-family: theme('fontFamily.mono');
-    font-size: 0.6875rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.3em;
-    color: var(--ash);
+  /* 旧 .seal 别名映射, 让没改 markup 的页面还能渲染 */
+  .seal { @apply sigil; }
+  .seal-lg { @apply sigil-lg; }
+
+  /* ── App-icon style card (HomePage 主样式) ─────────────────── */
+  .app-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 1.25rem 1rem 1rem;
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--fg);
   }
-  .archive-no-strong {
-    font-family: theme('fontFamily.mono');
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3em;
-    color: var(--ink);
+  .app-tile:hover {
+    border-color: rgba(45, 212, 191, 0.5);
+    background-color: var(--surface-hi);
+    transform: translateY(-2px);
+    color: var(--fg);
+  }
+  .app-tile-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(160deg, #1E2740, #0F1729);
+    border: 1px solid var(--line-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform 200ms ease;
+  }
+  .app-tile:hover .app-tile-icon {
+    transform: scale(1.05);
+  }
+  .app-tile-icon img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
   }
 }
 
-/* ── 滚动条 — 细且与纸面色调对齐 ─────────────────────────────── */
+/* ── 滚动条 ────────────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(31, 27, 20, 0.25) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
 }
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(31, 27, 20, 0.25);
-  border-radius: 0;
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 4px;
 }
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(31, 27, 20, 0.45);
+*::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 页面进入动画 ────────────────────────────────────────────
+   极轻量, 只有 transform + opacity, 不影响低端设备. */
+.page-enter {
+  animation: page-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-*::-webkit-scrollbar-track {
-  background: transparent;
+@keyframes page-rise {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
-/* ── 全局过渡动画(进入页面时墨色上浮) ──────────────────────── */
-.page-enter {
-  animation: ink-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes ink-rise {
-  0%   { opacity: 0; transform: translateY(12px) scale(0.99); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+/* 用户偏好减弱动效 — 尊重无障碍 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

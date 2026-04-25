@@ -1,36 +1,36 @@
 <template>
-  <div class="space-y-4">
-    <header class="flex items-center justify-between">
+  <div class="space-y-6">
+    <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
         <h1 class="h-page">用户管理</h1>
-        <p class="text-muted text-sm mt-1">{{ users.length }} / {{ total }} 用户</p>
+        <p class="text-fg-dim text-sm mt-1.5">{{ users.length }} / {{ total }} 用户</p>
       </div>
-      <button @click="openCreate" class="btn-primary">+ 新建用户</button>
+      <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
     </header>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
-            <tr>
-              <th class="px-4 py-2.5 text-left font-medium">邮箱</th>
-              <th class="px-4 py-2.5 text-left font-medium">姓名</th>
-              <th class="px-4 py-2.5 text-left font-medium">角色</th>
-              <th class="px-4 py-2.5 text-left font-medium">状态</th>
-              <th class="px-4 py-2.5 text-left font-medium">最后登录</th>
-              <th class="px-4 py-2.5"></th>
+          <thead>
+            <tr class="border-b border-line bg-bg-2/50">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">邮箱</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">姓名</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">角色</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">状态</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">最后登录</th>
+              <th class="px-4 py-3"></th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="u in users" :key="u.id" class="hover:bg-slate-50">
-              <td class="px-4 py-2.5 font-mono text-xs">{{ u.email }}</td>
-              <td class="px-4 py-2.5">{{ u.name }}</td>
-              <td class="px-4 py-2.5"><span :class="roleBadge(u.role)">{{ u.role }}</span></td>
-              <td class="px-4 py-2.5"><span :class="statusBadge(u.status)">{{ u.status }}</span></td>
-              <td class="px-4 py-2.5 text-xs text-muted">{{ formatTime(u.lastLoginAt) }}</td>
-              <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                <button @click="openEdit(u)" class="btn-ghost btn-sm">编辑</button>
-                <button @click="onDelete(u)" class="btn-ghost btn-sm text-red-600">删除</button>
+          <tbody>
+            <tr v-for="u in users" :key="u.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+              <td class="px-4 py-3 font-mono text-xs text-fg">{{ u.email }}</td>
+              <td class="px-4 py-3 text-fg">{{ u.name }}</td>
+              <td class="px-4 py-3"><span :class="roleBadge(u.role)">{{ roleLabel(u.role) }}</span></td>
+              <td class="px-4 py-3"><span :class="statusBadge(u.status)">{{ statusLabel(u.status) }}</span></td>
+              <td class="px-4 py-3 text-xs text-fg-dim">{{ formatTime(u.lastLoginAt) }}</td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <button @click="openEdit(u)" class="btn btn-ghost btn-sm">编辑</button>
+                <button @click="onDelete(u)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
           </tbody>
@@ -39,7 +39,7 @@
     </div>
 
     <Modal v-model="modalOpen" :title="editing?.id ? '编辑用户' : '新建用户'">
-      <div v-if="editing" class="space-y-3">
+      <div v-if="editing" class="space-y-4">
         <div>
           <label class="label">邮箱</label>
           <input v-model="editing.email" :disabled="!!editing.id" type="email" class="input" />
@@ -72,8 +72,8 @@
         </div>
       </div>
       <template #footer>
-        <button @click="modalOpen = false" class="btn-secondary">取消</button>
-        <button @click="onSave" :disabled="busy" class="btn-primary">{{ busy ? '保存中…' : '保存' }}</button>
+        <button @click="modalOpen = false" class="btn btn-secondary">取消</button>
+        <button @click="onSave" :disabled="busy" class="btn btn-primary">{{ busy ? '保存中…' : '保存' }}</button>
       </template>
     </Modal>
   </div>
@@ -92,15 +92,18 @@ const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
 
+const roleLabel = (r) => ({admin:"管理员", member:"成员", user:"用户"}[r] || r);
+const statusLabel = (s) => ({active:"活跃", banned:"封禁", disabled:"禁用"}[s] || s);
+
 function roleBadge(r) {
-  if (r === "admin") return "badge badge-amber";
-  if (r === "member") return "badge badge-emerald";
-  return "badge badge-slate";
+  if (r === "admin") return "badge-amber";
+  if (r === "member") return "badge-emerald";
+  return "badge-slate";
 }
 function statusBadge(s) {
-  if (s === "active") return "badge badge-emerald";
-  if (s === "banned") return "badge badge-red";
-  return "badge badge-slate";
+  if (s === "active") return "badge-emerald";
+  if (s === "banned") return "badge-red";
+  return "badge-slate";
 }
 
 async function load() {

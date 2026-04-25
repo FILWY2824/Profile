@@ -1,16 +1,19 @@
 <template>
-  <div class="space-y-4">
+  <div class="space-y-6 pb-24">
     <header>
       <h1 class="h-page">系统设置</h1>
-      <p class="text-muted text-sm mt-1">所有改动只对新会话生效;部分项保存后立即热重载</p>
+      <p class="text-fg-dim text-sm mt-1.5">所有改动只对新会话生效;部分项保存后立即热重载</p>
     </header>
 
-    <div v-if="loading" class="surface p-8 text-center text-muted">加载中…</div>
+    <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
+      <span class="inline-block h-2 w-2 rounded-full bg-teal-300 animate-shine mr-2 align-middle"></span>
+      加载中
+    </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-4">
+    <div v-else class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-5">
       <!-- Category sidebar -->
       <aside class="lg:sticky lg:top-20 lg:self-start space-y-3">
-        <input v-model="search" placeholder="🔍 搜索键名 / 描述…" class="input" />
+        <input v-model="search" placeholder="搜索键名 / 描述…" class="input" />
         <div class="surface p-2 space-y-0.5">
           <button @click="activeCategory = 'all'"
                   :class="['tab-pill', activeCategory === 'all' && 'tab-pill-active']">
@@ -26,56 +29,52 @@
           </button>
         </div>
 
-        <!-- Modified counter -->
-        <div v-if="modifiedKeys.length > 0" class="surface p-3 ring-amber-200 bg-amber-50/50">
-          <div class="text-xs text-amber-800 font-medium">{{ modifiedKeys.length }} 项未保存</div>
-          <ul class="text-[11px] text-amber-700 font-mono mt-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+        <div v-if="modifiedKeys.length > 0" class="surface p-3 border-warn/40 bg-warn/5">
+          <div class="text-xs text-warn font-medium">{{ modifiedKeys.length }} 项未保存</div>
+          <ul class="text-[11px] text-warn/80 font-mono mt-1.5 space-y-0.5 max-h-32 overflow-y-auto">
             <li v-for="k in modifiedKeys.slice(0, 8)" :key="k">{{ k }}</li>
-            <li v-if="modifiedKeys.length > 8" class="text-amber-600">…还有 {{ modifiedKeys.length - 8 }} 项</li>
+            <li v-if="modifiedKeys.length > 8" class="opacity-70">…还有 {{ modifiedKeys.length - 8 }} 项</li>
           </ul>
         </div>
       </aside>
 
       <!-- Settings list -->
-      <div class="space-y-3 pb-24">
-        <div v-if="filteredItems.length === 0" class="surface p-8 text-center text-muted text-sm">
+      <div class="space-y-3">
+        <div v-if="filteredItems.length === 0" class="surface p-8 text-center text-fg-dim text-sm">
           没有匹配的设置项
         </div>
 
         <div v-else
              v-for="row in filteredItems" :key="row.key"
              :class="['surface p-4 transition-colors',
-                      isModified(row.key) && 'ring-amber-300/70 bg-amber-50/30']">
+                      isModified(row.key) && '!border-warn/40 bg-warn/5']">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 md:items-start">
-            <!-- meta -->
             <div class="md:pr-2">
               <div class="flex items-center gap-2 flex-wrap">
-                <code class="text-xs font-mono font-semibold text-slate-900">{{ row.key }}</code>
+                <code class="text-xs font-mono font-semibold text-fg">{{ row.key }}</code>
                 <span v-if="row.sensitive" class="badge-amber">敏感</span>
                 <span v-if="isModified(row.key)" class="badge-accent">已修改</span>
                 <span v-if="isHotReload(row.key)" class="badge-emerald" title="保存后立即生效">热加载</span>
               </div>
-              <p class="text-xs text-muted mt-1.5 leading-relaxed">{{ row.description || '—' }}</p>
+              <p class="text-xs text-fg-dim mt-1.5 leading-relaxed">{{ row.description || '—' }}</p>
             </div>
 
-            <!-- editor -->
             <div class="md:col-span-2">
               <select v-if="row.key === 'TURNSTILE_ENABLED'" v-model="dirty[row.key]" class="input">
                 <option value="1">启用</option>
                 <option value="0">关闭</option>
               </select>
               <textarea v-else-if="row.value && row.value.length > 80"
-                        v-model="dirty[row.key]" rows="3" class="input-mono"></textarea>
+                        v-model="dirty[row.key]" rows="3" class="input input-mono"></textarea>
               <input v-else
                      v-model="dirty[row.key]"
                      :type="row.sensitive ? 'password' : 'text'"
-                     class="input-mono" />
+                     class="input input-mono" />
 
-              <!-- "原值" hint when modified -->
               <div v-if="isModified(row.key)" class="mt-2 flex items-center gap-2 text-[11px]">
-                <span class="text-slate-400">原值:</span>
-                <code class="text-slate-500 font-mono truncate">{{ row.value || '(空)' }}</code>
-                <button @click="resetKey(row.key)" class="ml-auto text-accent-600 hover:underline">还原</button>
+                <span class="text-fg-mute">原值:</span>
+                <code class="text-fg-dim font-mono truncate">{{ row.value || '(空)' }}</code>
+                <button @click="resetKey(row.key)" class="ml-auto text-teal-300 hover:underline">还原</button>
               </div>
             </div>
           </div>
@@ -86,14 +85,14 @@
     <!-- Floating save bar -->
     <transition name="bar">
       <div v-if="modifiedKeys.length > 0"
-           class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 surface px-4 py-3 flex items-center gap-3 shadow-pop">
+           class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 surface-glass shadow-pop px-4 py-3 flex items-center gap-3">
         <div class="text-sm">
-          <span class="font-medium text-slate-900">{{ modifiedKeys.length }}</span>
-          <span class="text-muted"> 项未保存</span>
+          <span class="font-medium text-fg">{{ modifiedKeys.length }}</span>
+          <span class="text-fg-dim"> 项未保存</span>
         </div>
-        <div class="h-4 w-px bg-slate-200"></div>
-        <button @click="resetAll" class="btn-ghost btn-sm">全部还原</button>
-        <button @click="save" :disabled="busy" class="btn-primary btn-sm">{{ busy ? "保存中…" : "保存修改" }}</button>
+        <div class="h-4 w-px bg-line"></div>
+        <button @click="resetAll" class="btn btn-ghost btn-sm">全部还原</button>
+        <button @click="save" :disabled="busy" class="btn btn-primary btn-sm">{{ busy ? "保存中…" : "保存修改" }}</button>
       </div>
     </transition>
   </div>

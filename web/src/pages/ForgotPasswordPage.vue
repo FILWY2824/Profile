@@ -1,67 +1,60 @@
 <template>
   <div class="w-full max-w-md">
-    <div class="flex items-baseline justify-between mb-4">
-      <span class="archive-no">FORM № P-001</span>
-      <a href="#/login" class="archive-no hover:text-ink transition-colors">← 返回登入</a>
+    <div class="flex items-center justify-center mb-6">
+      <a href="#/" class="flex items-center gap-3">
+        <span class="sigil-lg"></span>
+      </a>
     </div>
-    <div class="rule-h-strong mb-6"></div>
 
-    <div class="surface-elevated p-8 sm:p-10">
-      <div class="flex items-center gap-4 mb-7">
-        <span class="seal seal-lg">栖</span>
-        <div>
-          <div class="archive-no mb-1">RECOVER · 重置</div>
-          <h1 class="h-section">{{ step === 1 ? "重置密码" : "确认新密码" }}</h1>
-        </div>
+    <div class="surface-glass shadow-pop p-8 sm:p-10">
+      <div class="text-center mb-7">
+        <h1 class="h-page text-3xl mb-1.5">{{ step === 1 ? "重置密码" : "设置新密码" }}</h1>
+        <p class="text-fg-dim text-sm">
+          {{ step === 1 ? "我们会发送一个 6 位验证码到你的邮箱" : `验证码已发送至 ${email}` }}
+        </p>
       </div>
 
-      <div class="rule-h mb-6"></div>
-
-      <form v-if="step === 1" @submit.prevent="onSend" class="space-y-5">
-        <p class="text-sm text-ash leading-relaxed">
-          请输入注册时使用的邮箱,我们将发送一份六位重置码到这个地址。
-        </p>
+      <form v-if="step === 1" @submit.prevent="onSend" class="space-y-4">
         <div>
           <label class="label">邮箱地址</label>
-          <input v-model="email" type="email" required autofocus class="input input-mono" placeholder="you@example.com" />
+          <input v-model="email" type="email" required autofocus class="input" placeholder="you@example.com" />
         </div>
         <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
-        <div class="pt-3">
+        <div class="pt-2">
           <button :disabled="busy" class="btn btn-primary w-full">
-            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
-              {{ busy ? "正在投递…" : "发送重置码 →" }}
-            </span>
+            {{ busy ? "正在发送…" : "发送重置码" }}
           </button>
         </div>
       </form>
 
-      <form v-else @submit.prevent="onReset" class="space-y-5">
-        <div v-if="devCode" class="border border-ochre/40 bg-ochre/5 p-3 text-2xs">
-          <span class="archive-no text-ochre">DEV MODE</span>
-          <div class="font-mono text-ink mt-1">验证码: <span class="text-cinnabar font-semibold">{{ devCode }}</span></div>
+      <form v-else @submit.prevent="onReset" class="space-y-4">
+        <div v-if="devCode" class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs">
+          <span class="text-warn font-mono font-semibold">DEV ·</span>
+          <span class="text-fg ml-1">验证码: <span class="text-teal-300 font-mono font-semibold">{{ devCode }}</span></span>
         </div>
         <div>
           <label class="label">六位验证码</label>
-          <input v-model="code" required maxlength="6" class="input input-mono text-center text-2xl font-semibold tracking-[0.5em]"
+          <input v-model="code" required maxlength="6" class="input input-mono text-center text-2xl font-semibold tracking-[0.5em] py-3"
                  placeholder="000000" />
         </div>
         <div>
-          <label class="label">新密码 (≥ 8 字符)</label>
-          <input v-model="newPassword" type="password" required minlength="8" class="input input-mono" placeholder="••••••••" />
+          <label class="label">新密码 (至少 8 字符)</label>
+          <input v-model="newPassword" type="password" required minlength="8" class="input" placeholder="••••••••" />
         </div>
-        <div class="pt-3">
+        <div class="pt-2 space-y-2.5">
           <button :disabled="busy" class="btn btn-primary w-full">
-            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
-              {{ busy ? "正在重置…" : "重置密码 →" }}
-            </span>
+            {{ busy ? "正在重置…" : "重置密码" }}
+          </button>
+          <button type="button" @click="step = 1" class="btn btn-ghost w-full">
+            ← 返回上一步
           </button>
         </div>
       </form>
     </div>
 
     <div class="mt-6 flex items-center justify-between">
-      <span class="archive-no">QISHU · VOL. I</span>
-      <a href="#/login" class="archive-no hover:text-ink transition-colors">回到登入 →</a>
+      <a href="#/login" class="text-xs text-fg-mute hover:text-fg-dim transition-colors">← 返回登录</a>
+      <a href="#/" class="text-xs text-fg-mute hover:text-fg-dim transition-colors">回到主页 →</a>
     </div>
   </div>
 </template>
@@ -101,7 +94,7 @@ async function onSend() {
     });
     devCode.value = r.devCode || "";
     step.value = 2;
-    okToast("已发送(若该邮箱已注册)");
+    okToast("已发送 (若该邮箱已注册)");
   } catch (e) {
     errToast(e.message);
     if (window.turnstile) window.turnstile.reset();
@@ -116,7 +109,7 @@ async function onReset() {
     await api.post("/auth/reset-password", {
       email: email.value, code: code.value, newPassword: newPassword.value,
     });
-    okToast("密码已重置,请重新登录");
+    okToast("密码已重置, 请重新登录");
     navigate("/login");
   } catch (e) {
     errToast(e.message);

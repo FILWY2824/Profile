@@ -1,45 +1,52 @@
 <template>
-  <div class="space-y-4">
-    <header class="flex items-center justify-between">
+  <div class="space-y-6">
+    <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
         <h1 class="h-page">卡片管理</h1>
-        <p class="text-muted text-sm mt-1">{{ items.length }} 张卡片</p>
+        <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 张卡片</p>
       </div>
-      <button @click="openCreate" class="btn-primary">+ 新建卡片</button>
+      <button @click="openCreate" class="btn btn-primary">+ 新建卡片</button>
     </header>
 
     <div class="surface overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
-          <tr>
-            <th class="px-4 py-2.5 text-left font-medium">标题</th>
-            <th class="px-4 py-2.5 text-left font-medium">URL</th>
-            <th class="px-4 py-2.5 text-left font-medium">板块</th>
-            <th class="px-4 py-2.5 text-left font-medium">权限</th>
-            <th class="px-4 py-2.5 text-left font-medium w-20">排序</th>
-            <th class="px-4 py-2.5"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-for="c in items" :key="c.id" class="hover:bg-slate-50">
-            <td class="px-4 py-2.5 font-medium">{{ c.title }}</td>
-            <td class="px-4 py-2.5"><a :href="c.url" target="_blank" class="text-xs text-accent-600 hover:underline truncate inline-block max-w-[200px] align-middle">{{ c.url }}</a></td>
-            <td class="px-4 py-2.5 text-xs text-muted">{{ sectionName(c.sectionId) }}</td>
-            <td class="px-4 py-2.5"><PermissionBadge :value="c.permission" /></td>
-            <td class="px-4 py-2.5 text-xs">{{ c.order }}</td>
-            <td class="px-4 py-2.5 text-right whitespace-nowrap">
-              <button @click="openEdit(c)" class="btn-ghost btn-sm">编辑</button>
-              <button @click="onDelete(c)" class="btn-ghost btn-sm text-red-600">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-bg-2/50">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">标题</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">URL</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">板块</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">权限</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider w-20">排序</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in items" :key="c.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+              <td class="px-4 py-3 font-medium text-fg">{{ c.title }}</td>
+              <td class="px-4 py-3">
+                <a :href="c.url" target="_blank" class="text-xs text-teal-300 hover:underline truncate inline-block max-w-[200px] align-middle font-mono">{{ c.url }}</a>
+              </td>
+              <td class="px-4 py-3 text-xs text-fg-dim">{{ sectionName(c.sectionId) }}</td>
+              <td class="px-4 py-3"><PermissionBadge :value="c.permission" /></td>
+              <td class="px-4 py-3 text-xs text-fg-dim">{{ c.order }}</td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <button @click="openEdit(c)" class="btn btn-ghost btn-sm">编辑</button>
+                <button @click="onDelete(c)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
+              </td>
+            </tr>
+            <tr v-if="items.length === 0">
+              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">暂无卡片</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <Modal v-model="modalOpen" :title="editing?.id ? '编辑卡片' : '新建卡片'">
-      <div v-if="editing" class="space-y-3">
+      <div v-if="editing" class="space-y-4">
         <div><label class="label">标题</label><input v-model="editing.title" class="input" /></div>
-        <div><label class="label">URL</label><input v-model="editing.url" class="input-mono" placeholder="https://..." /></div>
+        <div><label class="label">URL</label><input v-model="editing.url" class="input input-mono" placeholder="https://..." /></div>
         <div><label class="label">描述</label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -62,15 +69,15 @@
         <div><label class="label">排序权重</label><input v-model.number="editing.order" type="number" class="input" /></div>
       </div>
       <template #footer>
-        <button @click="modalOpen = false" class="btn-secondary">取消</button>
-        <button @click="onSave" :disabled="busy" class="btn-primary">{{ busy ? '保存中…' : '保存' }}</button>
+        <button @click="modalOpen = false" class="btn btn-secondary">取消</button>
+        <button @click="onSave" :disabled="busy" class="btn btn-primary">{{ busy ? '保存中…' : '保存' }}</button>
       </template>
     </Modal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import Modal from "../Modal.vue";

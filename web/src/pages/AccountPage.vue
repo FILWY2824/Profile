@@ -1,180 +1,174 @@
 <template>
-  <div class="space-y-8">
+  <div>
     <!-- 文头 -->
-    <header>
-      <div class="flex items-baseline justify-between gap-4 mb-3">
-        <span class="archive-no">VOL. I · § II · ACCOUNT</span>
-        <span class="archive-no">{{ profile?.email || '—' }}</span>
-      </div>
-      <div class="rule-double mb-5"></div>
-      <h1 class="h-page">账户中心<span class="text-cinnabar">.</span></h1>
-      <p class="text-ash text-base mt-2 font-serif" style="font-variation-settings:'opsz' 24, 'SOFT' 50;">
-        管理个人信息、密码与已授权应用。
-      </p>
+    <header class="mb-8">
+      <h1 class="h-page">账户中心</h1>
+      <p class="text-fg-dim mt-2 text-[15px]">管理个人信息、密码与已授权应用</p>
     </header>
 
-    <!-- Tab: 编辑感的章节切换,小数字 + 名字 -->
-    <nav class="flex gap-1 overflow-x-auto pb-px border-b border-ink">
-      <button v-for="(t, i) in tabs" :key="t.id"
-              @click="active = t.id"
-              :class="[
-                'flex items-baseline gap-2 px-4 py-3 -mb-px border-b-2 transition-colors whitespace-nowrap',
-                active === t.id ? 'border-cinnabar text-ink' : 'border-transparent text-ash hover:text-ink'
-              ]">
-        <span :class="['font-mono text-2xs tabular-nums', active === t.id ? 'text-cinnabar' : 'text-ash-2']">
-          {{ String(i + 1).padStart(2, '0') }}
-        </span>
-        <span class="text-sm font-medium">{{ t.label }}</span>
-      </button>
-    </nav>
-
-    <!-- Profile -->
-    <section v-if="active === 'profile'" class="surface p-7 max-w-2xl">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="h-section">个人资料</h2>
-        <span class="archive-no">§ 01</span>
-      </div>
-      <div class="rule-h mb-6"></div>
-      <div v-if="profile" class="space-y-5">
-        <div class="flex items-center gap-4 pb-5 border-b border-rule-soft">
-          <div class="seal seal-lg">{{ initial }}</div>
-          <div class="flex-1 min-w-0">
-            <div class="font-mono text-sm text-ink truncate">{{ profile.email }}</div>
-            <div class="archive-no mt-1">ROLE · {{ roleLabel }}</div>
-          </div>
-        </div>
-        <div>
-          <label class="label">显示名</label>
-          <input v-model="profile.name" maxlength="60" class="input" />
-        </div>
-        <div>
-          <label class="label">个人介绍</label>
-          <textarea v-model="profile.bio" rows="3" maxlength="500" class="input-box"></textarea>
-        </div>
-        <div class="pt-2">
-          <button @click="saveProfile" :disabled="busy" class="btn btn-primary">
-            <span class="archive-no" style="color:inherit;letter-spacing:0.24em;">
-              {{ busy ? "保存中…" : "保存修改 →" }}
-            </span>
+    <div class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-6">
+      <!-- 左侧 sidebar -->
+      <aside class="lg:sticky lg:top-20 lg:self-start">
+        <!-- 移动端横向 tabs -->
+        <nav class="lg:hidden flex gap-1 overflow-x-auto pb-2 -mx-4 px-4 mb-4 border-b border-line">
+          <button v-for="t in tabs" :key="t.id"
+                  @click="active = t.id"
+                  :class="[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors',
+                    active === t.id ? 'bg-teal-300 text-[#062521] font-medium' : 'text-fg-dim hover:text-fg hover:bg-white/5'
+                  ]">
+            {{ t.label }}
+          </button>
+        </nav>
+        <!-- 桌面端竖向 -->
+        <div class="hidden lg:block surface p-2 space-y-0.5">
+          <button v-for="t in tabs" :key="t.id"
+                  @click="active = t.id"
+                  :class="['tab-pill', active === t.id && 'tab-pill-active']">
+            <span class="text-base">{{ t.icon }}</span>
+            <span>{{ t.label }}</span>
           </button>
         </div>
-      </div>
-    </section>
+      </aside>
 
-    <!-- Password -->
-    <section v-if="active === 'password'" class="surface p-7 max-w-2xl">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="h-section">修改密码</h2>
-        <span class="archive-no">§ 02</span>
-      </div>
-      <div class="rule-h mb-6"></div>
-      <div class="space-y-5">
-        <div>
-          <label class="label">原密码</label>
-          <input v-model="oldPw" type="password" class="input input-mono" />
-        </div>
-        <div>
-          <label class="label">新密码 (≥ 8 字符)</label>
-          <input v-model="newPw" type="password" minlength="8" class="input input-mono" placeholder="••••••••" />
-        </div>
-        <div class="flex gap-3 items-end">
-          <div class="flex-1">
-            <label class="label">邮箱验证码</label>
-            <input v-model="pwCode" maxlength="6" class="input input-mono text-center tracking-[0.4em]" placeholder="000000" />
-          </div>
-          <button @click="sendPwCode" :disabled="busy" class="btn btn-secondary">
-            <span class="archive-no" style="color:inherit;">发送验证码</span>
-          </button>
-        </div>
-        <div v-if="devCode" class="border border-ochre/40 bg-ochre/5 p-3 text-2xs">
-          <span class="archive-no text-ochre">DEV MODE</span>
-          <span class="font-mono text-ink ml-2">{{ devCode }}</span>
-        </div>
-        <div class="pt-2">
-          <button @click="changePassword" :disabled="busy" class="btn btn-primary">
-            <span class="archive-no" style="color:inherit;letter-spacing:0.24em;">
-              {{ busy ? "提交中…" : "确认修改 →" }}
-            </span>
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Logins -->
-    <section v-if="active === 'logins'" class="surface p-7">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="h-section">最近登录</h2>
-        <span class="archive-no">§ 03 · {{ logins.length }} 条</span>
-      </div>
-      <div class="rule-h mb-6"></div>
-      <div v-if="logins.length === 0" class="archive-no text-center py-12">— 暂无记录 —</div>
-      <div v-else class="overflow-x-auto -mx-1">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-ink">
-              <th class="archive-no py-2 px-1 text-left">时间</th>
-              <th class="archive-no py-2 px-1 text-left">IP</th>
-              <th class="archive-no py-2 px-1 text-left">USER-AGENT</th>
-              <th class="archive-no py-2 px-1 text-left">结果</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="l in logins" :key="l.id" class="border-b border-rule-softer">
-              <td class="py-2.5 px-1 font-mono text-2xs text-ash">{{ formatTime(l.timestamp) }}</td>
-              <td class="py-2.5 px-1 font-mono text-2xs text-ink">{{ l.ip }}</td>
-              <td class="py-2.5 px-1 text-2xs text-ash truncate max-w-xs">{{ l.userAgent }}</td>
-              <td class="py-2.5 px-1">
-                <span :class="l.success ? 'badge badge-sage' : 'badge badge-rust'">
-                  {{ l.success ? '成功' : (l.reason || '失败') }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- OAuth Grants -->
-    <section v-if="active === 'apps'" class="surface p-7">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="h-section">已授权应用</h2>
-        <span class="archive-no">§ 04 · {{ grants.length }} 项</span>
-      </div>
-      <div class="rule-h mb-6"></div>
-      <div v-if="grants.length === 0" class="archive-no text-center py-12">— 暂无 —</div>
-      <ul v-else class="space-y-3">
-        <li v-for="g in grants" :key="g.id"
-            class="flex items-center justify-between gap-4 p-4 border border-rule-soft hover:border-ink transition-colors">
-          <div class="min-w-0 flex-1">
-            <div class="h-sub truncate">{{ g.clientName }}</div>
-            <div class="archive-no mt-1 truncate">
-              SCOPES · {{ (g.scopes || []).join(' ') || '—' }} · 上次使用 {{ formatTime(g.lastUsedAt) }}
+      <!-- 右侧内容 -->
+      <div>
+        <!-- Profile -->
+        <section v-if="active === 'profile'" class="surface p-6 sm:p-8 max-w-2xl">
+          <h2 class="h-section mb-6">个人资料</h2>
+          <div v-if="profile" class="space-y-5">
+            <div class="flex items-center gap-4 pb-5 border-b border-line">
+              <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-300 to-teal-500 text-[#062521] font-bold text-2xl">
+                {{ initial }}
+              </span>
+              <div class="flex-1 min-w-0">
+                <div class="font-mono text-sm text-fg truncate">{{ profile.email }}</div>
+                <div class="text-xs text-fg-mute mt-1">{{ roleLabel }}</div>
+              </div>
+            </div>
+            <div>
+              <label class="label">显示名</label>
+              <input v-model="profile.name" maxlength="60" class="input" />
+            </div>
+            <div>
+              <label class="label">个人介绍</label>
+              <textarea v-model="profile.bio" rows="3" maxlength="500" class="input"></textarea>
+            </div>
+            <div class="pt-2">
+              <button @click="saveProfile" :disabled="busy" class="btn btn-primary">
+                {{ busy ? "保存中…" : "保存修改" }}
+              </button>
             </div>
           </div>
-          <button @click="revokeGrant(g.id)" class="btn btn-danger btn-sm">
-            <span class="archive-no" style="color:inherit;">撤销</span>
-          </button>
-        </li>
-      </ul>
-    </section>
+        </section>
 
-    <!-- Activity -->
-    <section v-if="active === 'activity'" class="surface p-7">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="h-section">活动日志</h2>
-        <span class="archive-no">§ 05 · {{ activity.length }} 条</span>
+        <!-- Password -->
+        <section v-if="active === 'password'" class="surface p-6 sm:p-8 max-w-2xl">
+          <h2 class="h-section mb-6">修改密码</h2>
+          <div class="space-y-5">
+            <div>
+              <label class="label">原密码</label>
+              <input v-model="oldPw" type="password" class="input input-mono" />
+            </div>
+            <div>
+              <label class="label">新密码 (至少 8 字符)</label>
+              <input v-model="newPw" type="password" minlength="8" class="input input-mono" placeholder="••••••••" />
+            </div>
+            <div class="flex gap-3 items-end">
+              <div class="flex-1">
+                <label class="label">邮箱验证码</label>
+                <input v-model="pwCode" maxlength="6" class="input input-mono text-center tracking-[0.4em]" placeholder="000000" />
+              </div>
+              <button @click="sendPwCode" :disabled="busy" class="btn btn-secondary whitespace-nowrap">
+                发送验证码
+              </button>
+            </div>
+            <div v-if="devCode" class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs">
+              <span class="text-warn font-mono font-semibold">DEV ·</span>
+              <span class="text-fg ml-1 font-mono">{{ devCode }}</span>
+            </div>
+            <div class="pt-2">
+              <button @click="changePassword" :disabled="busy" class="btn btn-primary">
+                {{ busy ? "提交中…" : "确认修改" }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logins -->
+        <section v-if="active === 'logins'" class="surface p-6 sm:p-8">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="h-section">最近登录</h2>
+            <span class="text-xs text-fg-mute font-mono">{{ logins.length }} 条</span>
+          </div>
+          <div v-if="logins.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无记录</div>
+          <div v-else class="overflow-x-auto -mx-2">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-line">
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">时间</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">IP</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">User-Agent</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="l in logins" :key="l.id" class="border-b border-line/60 hover:bg-white/2">
+                  <td class="py-2.5 px-2 font-mono text-xs text-fg-dim">{{ formatTime(l.timestamp) }}</td>
+                  <td class="py-2.5 px-2 font-mono text-xs text-fg">{{ l.ip }}</td>
+                  <td class="py-2.5 px-2 text-xs text-fg-dim truncate max-w-xs">{{ l.userAgent }}</td>
+                  <td class="py-2.5 px-2">
+                    <span :class="l.success ? 'badge-emerald' : 'badge-red'">
+                      {{ l.success ? '成功' : (l.reason || '失败') }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- OAuth Grants -->
+        <section v-if="active === 'apps'" class="surface p-6 sm:p-8">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="h-section">已授权应用</h2>
+            <span class="text-xs text-fg-mute font-mono">{{ grants.length }} 项</span>
+          </div>
+          <div v-if="grants.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
+          <ul v-else class="space-y-3">
+            <li v-for="g in grants" :key="g.id"
+                class="flex items-center justify-between gap-4 p-4 rounded-xl border border-line hover:border-line-strong transition-colors">
+              <div class="min-w-0 flex-1">
+                <div class="h-sub truncate">{{ g.clientName }}</div>
+                <div class="text-xs text-fg-mute mt-1 truncate font-mono">
+                  {{ (g.scopes || []).join(' ') || '—' }} · 上次使用 {{ formatTime(g.lastUsedAt) }}
+                </div>
+              </div>
+              <button @click="revokeGrant(g.id)" class="btn btn-danger btn-sm whitespace-nowrap">
+                撤销
+              </button>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Activity -->
+        <section v-if="active === 'activity'" class="surface p-6 sm:p-8">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="h-section">活动日志</h2>
+            <span class="text-xs text-fg-mute font-mono">{{ activity.length }} 条</span>
+          </div>
+          <div v-if="activity.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
+          <ul v-else class="space-y-1">
+            <li v-for="a in activity" :key="a.id"
+                class="flex items-baseline gap-4 py-2.5 border-b border-line/60 last:border-0 text-sm">
+              <span class="font-mono text-xs text-fg-mute w-32 flex-shrink-0">{{ formatTime(a.timestamp) }}</span>
+              <span class="text-teal-300">·</span>
+              <span class="text-fg leading-relaxed">{{ a.detail || a.action }}</span>
+            </li>
+          </ul>
+        </section>
       </div>
-      <div class="rule-h mb-6"></div>
-      <div v-if="activity.length === 0" class="archive-no text-center py-12">— 暂无 —</div>
-      <ul v-else class="space-y-2">
-        <li v-for="a in activity" :key="a.id"
-            class="flex items-baseline gap-4 py-2.5 border-b border-rule-softer last:border-0 text-sm">
-          <span class="font-mono text-2xs text-ash w-32 flex-shrink-0">{{ formatTime(a.timestamp) }}</span>
-          <span class="text-cinnabar font-mono text-2xs">·</span>
-          <span class="text-ink-2 leading-relaxed">{{ a.detail || a.action }}</span>
-        </li>
-      </ul>
-    </section>
+    </div>
   </div>
 </template>
 
@@ -185,11 +179,11 @@ import { okToast, errToast } from "../toast.js";
 import { formatTime } from "../format.js";
 
 const tabs = [
-  { id: "profile",  label: "个人资料" },
-  { id: "password", label: "修改密码" },
-  { id: "logins",   label: "登录记录" },
-  { id: "apps",     label: "已授权应用" },
-  { id: "activity", label: "活动日志" },
+  { id: "profile",  icon: "👤", label: "个人资料" },
+  { id: "password", icon: "🔑", label: "修改密码" },
+  { id: "logins",   icon: "📋", label: "登录记录" },
+  { id: "apps",     icon: "🔗", label: "授权应用" },
+  { id: "activity", icon: "⚡", label: "活动日志" },
 ];
 const active = ref("profile");
 
@@ -227,7 +221,7 @@ async function changePassword() {
     await api.post("/account/password/change", {
       oldPassword: oldPw.value, newPassword: newPw.value, code: pwCode.value,
     });
-    okToast("密码已修改,请重新登录");
+    okToast("密码已修改, 请重新登录");
     setTimeout(() => location.hash = "/login", 800);
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }

@@ -1,64 +1,54 @@
 <template>
   <div class="w-full max-w-md">
-    <!-- 文头档案号 -->
-    <div class="flex items-baseline justify-between mb-4">
-      <span class="archive-no">FORM № L-001</span>
-      <a href="#/" class="archive-no hover:text-ink transition-colors">← 返回</a>
+    <!-- 顶部 logo -->
+    <div class="flex items-center justify-center mb-6">
+      <a href="#/" class="flex items-center gap-3">
+        <span class="sigil-lg"></span>
+      </a>
     </div>
-    <div class="rule-h-strong mb-6"></div>
 
-    <div class="surface-elevated p-8 sm:p-10">
-      <!-- 印章 + 标题 -->
-      <div class="flex items-center gap-4 mb-7">
-        <span class="seal seal-lg">栖</span>
-        <div>
-          <div class="archive-no mb-1">SIGN-IN · 登入</div>
-          <h1 class="h-section">欢迎归来</h1>
-        </div>
+    <div class="surface-glass shadow-pop p-8 sm:p-10">
+      <div class="text-center mb-7">
+        <h1 class="h-page text-3xl mb-1.5">欢迎回来</h1>
+        <p class="text-fg-dim text-sm">登录到你的工具面板</p>
       </div>
 
-      <div class="rule-h mb-6"></div>
-
-      <form @submit.prevent="onSubmit" class="space-y-5">
+      <form @submit.prevent="onSubmit" class="space-y-4">
         <div>
-          <label class="label">邮箱地址 / Email</label>
-          <input v-model="email" type="email" required autofocus class="input input-mono"
+          <label class="label">邮箱地址</label>
+          <input v-model="email" type="email" required autofocus class="input"
                  placeholder="you@example.com" />
         </div>
         <div>
-          <div class="flex items-baseline justify-between">
-            <label class="label">密码 / Password</label>
-            <a href="#/forgot-password" class="text-2xs text-cinnabar hover:text-cinnabar-deep transition-colors">忘记密码 ?</a>
+          <div class="flex items-baseline justify-between mb-1.5">
+            <label class="label !mb-0">密码</label>
+            <a href="#/forgot-password" class="text-xs text-teal-300 hover:text-teal-200 transition-colors">忘记密码?</a>
           </div>
-          <input v-model="password" type="password" required class="input input-mono"
+          <input v-model="password" type="password" required class="input"
                  placeholder="••••••••" />
         </div>
 
         <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
 
-        <div class="pt-3">
+        <div class="pt-2">
           <button :disabled="busy" class="btn btn-primary w-full">
-            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
-              {{ busy ? "正在核验…" : "登 入 →" }}
-            </span>
+            {{ busy ? "正在登录…" : "登录" }}
           </button>
         </div>
       </form>
 
       <div class="rule-h mt-7 mb-5"></div>
 
-      <p class="text-center text-sm text-ash">
-        尚无账号 ?
-        <a href="#/register" class="font-medium text-cinnabar hover:text-cinnabar-deep underline decoration-cinnabar/40">
-          创建栖枢档案
+      <p class="text-center text-sm text-fg-dim">
+        还没有账号?
+        <a href="#/register" class="text-teal-300 hover:text-teal-200 font-medium transition-colors">
+          立即注册
         </a>
       </p>
     </div>
 
-    <!-- 底部卷宗号 -->
-    <div class="mt-6 flex items-center justify-between">
-      <span class="archive-no">QISHU · VOL. I</span>
-      <span class="archive-no">— · —</span>
+    <div class="mt-6 flex items-center justify-center">
+      <a href="#/" class="text-xs text-fg-mute hover:text-fg-dim transition-colors">← 返回主页</a>
     </div>
   </div>
 </template>

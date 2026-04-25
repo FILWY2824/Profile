@@ -3,36 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#FBF7EE" />
+    <meta name="theme-color" content="#0A0E1A" />
+    <meta name="color-scheme" content="dark" />
 
-    <!-- 朱砂印章 favicon。SVG 印鉴风格,栖字以 Noto Serif SC fallback 落字。 -->
+    <!--
+      新图标: 灵感来自"层叠圆角方块 + 中心闪光星"
+      简洁几何, 不再使用汉字, 用纯 SVG path 表达"工具集合 + 焦点高亮"
+      - 深空蓝底 #0F1729
+      - 青绿主体 #2DD4BF + 浅青向下渐变
+      - 中心 4 角星 (asterisk-like) 白色
+      文件极小 (< 1KB), 可作 favicon 直接 inline
+    -->
     <link
       rel="icon"
       type="image/svg+xml"
-      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='4' width='56' height='56' rx='6' fill='%23B33A2A'/><rect x='4' y='4' width='56' height='56' rx='6' fill='none' stroke='%23FBF7EE' stroke-width='1.2' stroke-dasharray='2 1' transform='translate(2 2) scale(0.94)'/><text x='32' y='46' text-anchor='middle' font-family='Songti SC, STSong, Noto Serif SC, serif' font-size='38' font-weight='700' fill='%23FBF7EE'>栖</text></svg>"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%232DD4BF'/><stop offset='1' stop-color='%230EA5B7'/></linearGradient></defs><rect width='64' height='64' rx='14' fill='%230F1729'/><rect x='14' y='14' width='36' height='36' rx='9' fill='url(%23g)'/><path d='M32 18 L34 30 L46 32 L34 34 L32 46 L30 34 L18 32 L30 30 Z' fill='%23ffffff'/></svg>"
     />
 
-    <!-- 预连 Google Fonts -->
+    <!-- Apple touch icon (圆角处理由 iOS 自动加上, 这里直接给方版) -->
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%232DD4BF'/><stop offset='1' stop-color='%230EA5B7'/></linearGradient></defs><rect width='180' height='180' fill='%230F1729'/><rect x='40' y='40' width='100' height='100' rx='24' fill='url(%23g)'/><path d='M90 50 L95 85 L130 90 L95 95 L90 130 L85 95 L50 90 L85 85 Z' fill='%23ffffff'/></svg>"
+    />
+
+    <!-- 字体策略 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-
-    <!--
-      字体策略:
-        - Fraunces: variable 字体, 衬线展示用, opsz 9pt-144pt 可变, slant 可变.
-                    用于大标题、栖字、版面号 (Vol. I, № 001).
-        - Source Sans 3: variable, 无衬线正文, 适合 UI / 表单 / 按钮.
-        - JetBrains Mono: 等宽, 用于键名、序号、邮箱、URL.
-        - Noto Serif SC: 中文衬线, 标题里中文段 fallback.
-        - Noto Sans SC: 中文无衬线, 正文里中文段 fallback.
-
-      使用 display=swap 防止字体加载阻塞首屏文字.
-    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=Source+Sans+3:ital,wght@0,300..700;1,400&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
 
-    <title>栖枢 · Qishu Archive</title>
+    <title>Hub · 工具面板</title>
   </head>
   <body class="font-sans antialiased">
     <div id="app"></div>

@@ -1,57 +1,60 @@
 <template>
-  <div class="flex min-h-[calc(100vh-3.5rem)] bg-paper">
+  <div class="flex min-h-[calc(100vh-3.5rem)]">
     <!-- 左侧导航 -->
-    <aside class="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-rule-soft bg-paper-50">
-      <div class="px-5 pt-7 pb-5 border-b border-rule-soft">
+    <aside class="hidden md:flex flex-col w-60 flex-shrink-0 border-r border-line bg-bg-2/60">
+      <div class="px-5 pt-6 pb-5 border-b border-line">
         <div class="flex items-center gap-3">
-          <span class="seal">栖</span>
+          <span class="sigil"></span>
           <div>
-            <div class="archive-no text-cinnabar">ADMIN · 后台</div>
-            <div class="font-display text-base text-ink tracking-tight leading-tight mt-0.5">栖枢档案</div>
+            <div class="font-display font-bold text-fg text-[15px] tracking-tight leading-tight">管理后台</div>
+            <div class="text-[10px] text-fg-mute mt-0.5 font-mono">ADMIN PANEL</div>
           </div>
         </div>
       </div>
       <nav class="flex-1 overflow-y-auto p-3 space-y-5">
         <div>
-          <div class="archive-no px-3 mb-2">§ I · 概览</div>
+          <div class="text-[10px] font-medium text-fg-mute uppercase tracking-wider px-3 mb-2">概览</div>
           <button v-for="t in topTabs" :key="t.id"
                   @click="active = t.id"
                   :class="['tab-pill', active === t.id && 'tab-pill-active']">
+            <span class="text-base">{{ t.icon }}</span>
             <span>{{ t.label }}</span>
           </button>
         </div>
         <div>
-          <div class="archive-no px-3 mb-2">§ II · 内容管理</div>
+          <div class="text-[10px] font-medium text-fg-mute uppercase tracking-wider px-3 mb-2">内容</div>
           <button v-for="t in contentTabs" :key="t.id"
                   @click="active = t.id"
                   :class="['tab-pill', active === t.id && 'tab-pill-active']">
+            <span class="text-base">{{ t.icon }}</span>
             <span>{{ t.label }}</span>
           </button>
         </div>
         <div>
-          <div class="archive-no px-3 mb-2">§ III · 系统</div>
+          <div class="text-[10px] font-medium text-fg-mute uppercase tracking-wider px-3 mb-2">系统</div>
           <button v-for="t in systemTabs" :key="t.id"
                   @click="active = t.id"
                   :class="['tab-pill', active === t.id && 'tab-pill-active']">
+            <span class="text-base">{{ t.icon }}</span>
             <span>{{ t.label }}</span>
           </button>
         </div>
       </nav>
-      <div class="border-t border-rule-soft px-5 py-4">
-        <div class="archive-no">VOL. I · ADMIN</div>
-        <div class="archive-no opacity-60 mt-0.5">{{ today }}</div>
+      <div class="border-t border-line px-5 py-3 text-xs text-fg-mute font-mono">
+        {{ today }}
       </div>
     </aside>
 
     <!-- 移动端 tab -->
-    <div class="md:hidden border-b border-rule-soft bg-paper-50 overflow-x-auto whitespace-nowrap p-2 sticky top-14 z-20">
+    <div class="md:hidden border-b border-line bg-bg-2/80 backdrop-blur overflow-x-auto whitespace-nowrap p-2 sticky top-14 z-20">
       <button v-for="t in [...topTabs, ...contentTabs, ...systemTabs]" :key="t.id"
               @click="active = t.id"
               :class="[
-                'inline-flex items-center px-3 py-1.5 rounded-sm font-mono text-2xs uppercase tracking-archive mr-1',
-                active === t.id ? 'bg-ink text-paper' : 'text-ash'
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs mr-1 transition-colors',
+                active === t.id ? 'bg-teal-300 text-[#062521] font-medium' : 'text-fg-dim'
               ]">
-        {{ t.label }}
+        <span>{{ t.icon }}</span>
+        <span>{{ t.label }}</span>
       </button>
     </div>
 
@@ -74,17 +77,17 @@ import OAuthClientsTab from "../components/admin/OAuthClientsTab.vue";
 import SettingsTab from "../components/admin/SettingsTab.vue";
 import AuditTab from "../components/admin/AuditTab.vue";
 
-const topTabs = [{ id: "dashboard", label: "总览 · Dashboard" }];
+const topTabs = [{ id: "dashboard", icon: "🏠", label: "总览" }];
 const contentTabs = [
-  { id: "sections", label: "板块 · Sections" },
-  { id: "cards",    label: "卡片 · Cards" },
-  { id: "favicons", label: "图标缓存 · Icons" },
+  { id: "sections", icon: "📂", label: "板块" },
+  { id: "cards",    icon: "🔗", label: "卡片" },
+  { id: "favicons", icon: "🎨", label: "图标缓存" },
 ];
 const systemTabs = [
-  { id: "users",    label: "用户 · Users" },
-  { id: "oauth",    label: "OAuth 客户端" },
-  { id: "settings", label: "系统设置" },
-  { id: "audit",    label: "审计 · Audit" },
+  { id: "users",    icon: "👥", label: "用户" },
+  { id: "oauth",    icon: "🔑", label: "OAuth 客户端" },
+  { id: "settings", icon: "⚙️", label: "系统设置" },
+  { id: "audit",    icon: "📜", label: "审计日志" },
 ];
 
 const active = ref("dashboard");
