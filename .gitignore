@@ -1,15 +1,16 @@
-# 忽略所有的日志文件
-*.log
-
-
-# 忽略特定文件夹
-.next/
-.npm-cache/
-node_modules/
 data/
-
-
-# 忽略特定文件
+*.db
+*.db-shm
+*.db-wal
 .env
-let
-
+.env.local
+qishu
+qishu-*
+web/node_modules/
+web/dist/
+*.log
+tmp/
+.DS_Store
+.idea/
+.vscode/
+coverage.out

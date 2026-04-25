@@ -1,0 +1,60 @@
+# ───────────────────────────────────────────────────────────────────────────
+# 栖枢 Profile — docker-compose 一键部署
+#
+# 用法:
+#   cp .env.example .env
+#   # 编辑 .env 至少填上 JWT_SECRET、ADMIN_EMAIL、ADMIN_PASSWORD
+#   docker compose up -d
+#
+# 数据持久化:
+#   SQLite 数据库放在命名卷 qishu_data 里(挂载到容器的 /data)。卷即便
+#   `docker compose down` 也不会被删。要彻底清空:`docker volume rm qishu_data`
+#
+# 日志:
+#   docker compose logs -f  即可。日志每行都以 [boot]/[http]/[prune]/[panic]
+#   开头,grep 友好。
+# ───────────────────────────────────────────────────────────────────────────
+
+services:
+  qishu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qishu:latest
+    container_name: qishu
+    restart: unless-stopped
+
+    # 8080:8080 —— 容器 8080 映射到宿主 8080。如果端口被占,改成 "9090:8080"
+    # 之类。前面的数字是你访问的端口,后面的不要动。
+    ports:
+      - "3000:8080"
+
+    # 环境变量从 .env 文件注入。.env.example 里列了所有可用键。
+    env_file:
+      - .env
+
+    # 数据卷 —— SQLite 文件及 WAL 都落在这里。
+    volumes:
+      - qishu_data:/data
+
+    # 内存软上限,配合 Go 的 GOMEMLIMIT=80MiB 形成双保险。超过 150M docker
+    # 会 OOM-kill,由 restart: unless-stopped 自动拉起。预期稳态 RSS <60M,
+    # 留 ~2 倍空间已经非常安全。
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+
+    # 健康检查 —— 容器每 30s 调一次 /api/healthz。失败 3 次被标为 unhealthy。
+    # alpine 基镜像自带 wget,所以可以直接用;scratch 方案时注释掉的原因在这里
+    # 不再适用。
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  qishu_data:
+    name: qishu_data
