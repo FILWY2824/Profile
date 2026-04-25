@@ -1,6 +1,8 @@
 module github.com/qishu/profile
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.12
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
@@ -19,5 +21,4 @@ require (
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
-	golang.org/x/time v0.11.0 // indirect
 )

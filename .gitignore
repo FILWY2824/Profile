@@ -4,8 +4,6 @@ data/
 *.db-wal
 .env
 .env.local
-qishu
-qishu-*
 web/node_modules/
 web/dist/
 *.log
