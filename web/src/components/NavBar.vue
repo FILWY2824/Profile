@@ -1,33 +1,55 @@
 <template>
-  <nav class="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-slate-200/70">
-    <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-      <div class="flex h-14 items-center justify-between">
-        <a href="#/" class="flex items-center gap-2.5 group">
-          <div class="h-7 w-7 rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-white font-semibold text-sm shadow-soft">
-            栖
-          </div>
-          <span class="font-semibold tracking-tight text-slate-900 group-hover:text-accent-700 transition-colors">栖枢</span>
-        </a>
+  <nav class="sticky top-0 z-30">
+    <!-- 顶部超细朱砂线 -->
+    <div class="h-[3px] bg-cinnabar"></div>
+    <div class="bg-paper/85 backdrop-blur-md border-b border-rule-soft">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-14 items-center justify-between gap-6">
 
-        <div class="flex items-center gap-1.5">
-          <a href="#/" class="btn-ghost btn-sm">主页</a>
-          <template v-if="!sessionLoaded">
-            <span class="text-xs text-slate-400 px-2">…</span>
-          </template>
-          <template v-else-if="!currentUser">
-            <a href="#/login" class="btn-ghost btn-sm">登录</a>
-            <a href="#/register" class="btn-primary btn-sm">注册</a>
-          </template>
-          <template v-else>
-            <a v-if="isAdmin" href="#/admin" class="btn-ghost btn-sm">管理</a>
-            <a href="#/account" class="btn-ghost btn-sm flex items-center gap-1.5">
-              <span class="h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-medium text-slate-700">
-                {{ initial }}
-              </span>
-              <span class="hidden sm:inline">{{ currentUser.name }}</span>
+          <!-- 印鉴 logo + 卷宗号 -->
+          <a href="#/" class="group flex items-center gap-3">
+            <span class="seal">栖</span>
+            <span class="hidden sm:flex flex-col leading-tight">
+              <span class="font-display text-base text-ink tracking-tight group-hover:text-cinnabar transition-colors">栖枢</span>
+              <span class="archive-no" style="letter-spacing:0.24em;font-size:9px;">QISHU · ARCHIVE</span>
+            </span>
+          </a>
+
+          <!-- 右侧导航 -->
+          <div class="flex items-center gap-1">
+            <a href="#/" class="btn btn-ghost btn-sm uppercase tracking-archive2">
+              <span class="archive-no">主页 · Home</span>
             </a>
-            <button @click="onLogout" class="btn-ghost btn-sm">退出</button>
-          </template>
+
+            <template v-if="!sessionLoaded">
+              <span class="archive-no opacity-50 px-3">…</span>
+            </template>
+
+            <template v-else-if="!currentUser">
+              <a href="#/login" class="btn btn-ghost btn-sm">
+                <span class="archive-no">登录</span>
+              </a>
+              <a href="#/register" class="btn btn-primary btn-sm">
+                <span class="archive-no" style="color:inherit;letter-spacing:0.24em;">注册 →</span>
+              </a>
+            </template>
+
+            <template v-else>
+              <a v-if="isAdmin" href="#/admin" class="btn btn-ghost btn-sm">
+                <span class="archive-no">管理</span>
+              </a>
+              <a href="#/account" class="btn btn-ghost btn-sm flex items-center gap-2">
+                <span class="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-ink/30 bg-paper-200 font-mono text-xs text-ink">
+                  {{ initial }}
+                </span>
+                <span class="hidden sm:inline archive-no">{{ currentUser.name }}</span>
+              </a>
+              <button @click="onLogout" class="btn btn-ghost btn-sm">
+                <span class="archive-no">退出</span>
+              </button>
+            </template>
+          </div>
+
         </div>
       </div>
     </div>

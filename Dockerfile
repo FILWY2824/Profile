@@ -108,16 +108,21 @@ RUN apk add --no-cache ca-certificates tzdata wget \
 
 COPY --from=api-builder /out/qishu /usr/local/bin/qishu
 
-RUN mkdir -p /data && chown -R nonroot:nonroot /data
-VOLUME ["/data"]
+# 数据目录:借鉴 chenyme/grok2api 的 /app/data 约定。容器在这里持有 SQLite
+# 数据库与所有持久状态;docker compose 用命名卷 qishu_data 挂到这里。
+RUN mkdir -p /app/data && chown -R nonroot:nonroot /app/data
+VOLUME ["/app/data"]
 
 USER nonroot:nonroot
 
 ENV LISTEN_ADDR=0.0.0.0:8080 \
     APP_ENV=production \
-    DATA_DIR=/data \
-    GOMEMLIMIT=80MiB \
-    GOGC=50
+    DATA_DIR=/app/data \
+    GOMEMLIMIT=48MiB \
+    GOGC=20 \
+    GOMAXPROCS=2 \
+    GODEBUG=madvdontneed=1,scavtrace=0,gctrace=0 \
+    LOG_MEMSTATS_SEC=300
 
 EXPOSE 8080
 

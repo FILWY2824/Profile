@@ -39,7 +39,10 @@ func Load() (*Config, error) {
 		ResendAPIKey:    strings.TrimSpace(os.Getenv("RESEND_API_KEY")),
 		ResendFrom:      strings.TrimSpace(os.Getenv("RESEND_FROM")),
 		AppEnv:          strings.ToLower(getEnv("APP_ENV", "development")),
-		DataDir:         getEnv("DATA_DIR", "./data"),
+		// 默认值与容器内的 DATA_DIR=/app/data 同名结构对齐。开发态裸跑会落
+		// 在仓库下的 ./app/data/,不会污染 /tmp 也不会伸到系统目录。容器
+		// 部署由 Dockerfile 的 ENV 覆写为 /app/data。
+		DataDir:         getEnv("DATA_DIR", "./app/data"),
 		TurnstileSite:   strings.TrimSpace(os.Getenv("TURNSTILE_SITE_KEY")),
 		TurnstileSecret: strings.TrimSpace(os.Getenv("TURNSTILE_SECRET_KEY")),
 		TrustProxy:      parseBool(os.Getenv("TRUST_PROXY")),

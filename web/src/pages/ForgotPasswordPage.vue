@@ -1,38 +1,67 @@
 <template>
-  <div class="w-full max-w-sm">
-    <div class="surface p-7">
-      <div class="mb-6">
-        <h1 class="text-xl font-semibold tracking-tight text-slate-900">重置密码</h1>
-        <p class="text-sm text-muted mt-1">{{ step === 1 ? "输入注册邮箱接收验证码" : "输入新密码与验证码" }}</p>
+  <div class="w-full max-w-md">
+    <div class="flex items-baseline justify-between mb-4">
+      <span class="archive-no">FORM № P-001</span>
+      <a href="#/login" class="archive-no hover:text-ink transition-colors">← 返回登入</a>
+    </div>
+    <div class="rule-h-strong mb-6"></div>
+
+    <div class="surface-elevated p-8 sm:p-10">
+      <div class="flex items-center gap-4 mb-7">
+        <span class="seal seal-lg">栖</span>
+        <div>
+          <div class="archive-no mb-1">RECOVER · 重置</div>
+          <h1 class="h-section">{{ step === 1 ? "重置密码" : "确认新密码" }}</h1>
+        </div>
       </div>
 
-      <form v-if="step === 1" @submit.prevent="onSend" class="space-y-4">
+      <div class="rule-h mb-6"></div>
+
+      <form v-if="step === 1" @submit.prevent="onSend" class="space-y-5">
+        <p class="text-sm text-ash leading-relaxed">
+          请输入注册时使用的邮箱,我们将发送一份六位重置码到这个地址。
+        </p>
         <div>
-          <label class="label">邮箱</label>
-          <input v-model="email" type="email" required autofocus class="input" />
+          <label class="label">邮箱地址</label>
+          <input v-model="email" type="email" required autofocus class="input input-mono" placeholder="you@example.com" />
         </div>
-        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile"></div>
-        <button :disabled="busy" class="btn-primary w-full">{{ busy ? "发送中…" : "发送重置码" }}</button>
+        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
+        <div class="pt-3">
+          <button :disabled="busy" class="btn btn-primary w-full">
+            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
+              {{ busy ? "正在投递…" : "发送重置码 →" }}
+            </span>
+          </button>
+        </div>
       </form>
 
-      <form v-else @submit.prevent="onReset" class="space-y-4">
-        <div v-if="devCode" class="text-xs bg-amber-50 ring-1 ring-amber-200/70 rounded-lg p-3 text-amber-800">
-          <span class="font-medium">[开发模式]</span> 验证码:<span class="font-mono ml-1">{{ devCode }}</span>
+      <form v-else @submit.prevent="onReset" class="space-y-5">
+        <div v-if="devCode" class="border border-ochre/40 bg-ochre/5 p-3 text-2xs">
+          <span class="archive-no text-ochre">DEV MODE</span>
+          <div class="font-mono text-ink mt-1">验证码: <span class="text-cinnabar font-semibold">{{ devCode }}</span></div>
         </div>
         <div>
-          <label class="label">6 位验证码</label>
-          <input v-model="code" required maxlength="6" class="input font-mono text-center text-lg tracking-[0.4em]" placeholder="000000" />
+          <label class="label">六位验证码</label>
+          <input v-model="code" required maxlength="6" class="input input-mono text-center text-2xl font-semibold tracking-[0.5em]"
+                 placeholder="000000" />
         </div>
         <div>
-          <label class="label">新密码</label>
-          <input v-model="newPassword" type="password" required minlength="8" class="input" placeholder="至少 8 字符" />
+          <label class="label">新密码 (≥ 8 字符)</label>
+          <input v-model="newPassword" type="password" required minlength="8" class="input input-mono" placeholder="••••••••" />
         </div>
-        <button :disabled="busy" class="btn-primary w-full">{{ busy ? "提交中…" : "重置密码" }}</button>
+        <div class="pt-3">
+          <button :disabled="busy" class="btn btn-primary w-full">
+            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
+              {{ busy ? "正在重置…" : "重置密码 →" }}
+            </span>
+          </button>
+        </div>
       </form>
+    </div>
 
-      <p class="mt-6 text-center text-sm text-muted">
-        <a href="#/login" class="text-accent-600 hover:underline">返回登录</a>
-      </p>
+    <div class="mt-6 flex items-center justify-between">
+      <span class="archive-no">QISHU · VOL. I</span>
+      <a href="#/login" class="archive-no hover:text-ink transition-colors">回到登入 →</a>
     </div>
   </div>
 </template>

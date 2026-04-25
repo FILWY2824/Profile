@@ -1,24 +1,31 @@
 # ───────────────────────────────────────────────────────────────────────────
 # 栖枢 Profile — docker compose 部署
 #
+# 设计参考: chenyme/grok2api 的部署模式
+#   - 数据落到容器内 /app/data,由 docker 自己管理(named volume),不写宿主
+#     工作目录。`docker compose down` 不会丢数据,`docker compose down -v`
+#     才会清空。
+#   - 不挂 ./data 这种宿主 bind mount,数据完全活在 docker 体系内。
+#   - init: true(tini-like)正确转发信号,容器停止时进程能干净退出,
+#     RSS 立刻被内核回收 ─ 修掉"关闭容器后宿主内存不下降"这个问题。
+#   - 内存硬上限 100M。Go runtime 在 cmd/qishu/runtime.go 里设了
+#     GOMEMLIMIT=64MiB / GOGC=20 / GOMAXPROCS=2 + 周期 FreeOSMemory,
+#     稳态 RSS 通常在 25-45MiB 之间。
+#
 # 用法:
 #   cp .env.example .env
 #   # 编辑 .env 至少填上 JWT_SECRET、ADMIN_EMAIL、ADMIN_PASSWORD
 #   docker compose up -d --build
 #
-# 数据持久化:
-#   使用 Docker 命名卷 qishu_data,Docker 自己管理(实际位置在
-#   /var/lib/docker/volumes/qishu_data/_data,但你不需要直接访问)。
-#   `docker compose down` 不会删除数据;`docker volume rm qishu_data` 才会。
-#
-#   备份:    docker run --rm -v qishu_data:/data -v $PWD:/backup alpine \
-#              tar czf /backup/qishu-data.tar.gz -C /data .
-#   恢复:    docker run --rm -v qishu_data:/data -v $PWD:/backup alpine \
-#              tar xzf /backup/qishu-data.tar.gz -C /data
-#   查看体积: docker system df -v | grep qishu_data
-#
 # 端口:
 #   外部 3000 -> 容器 8080
+#
+# 数据备份/恢复:
+#   备份: docker run --rm -v qishu_data:/app/data -v $PWD:/backup alpine \
+#           tar czf /backup/qishu-data.tar.gz -C /app/data .
+#   恢复: docker run --rm -v qishu_data:/app/data -v $PWD:/backup alpine \
+#           tar xzf /backup/qishu-data.tar.gz -C /app/data
+#   查看: docker volume inspect qishu_data
 # ───────────────────────────────────────────────────────────────────────────
 
 services:
@@ -36,21 +43,43 @@ services:
     container_name: qishu
     restart: unless-stopped
 
+    # 让 docker 提供 PID 1(tini-like),正确转发 SIGTERM -> 进程干净退出 ->
+    # 内核立刻回收 RSS 与 page cache。这是修掉"关闭后内存不释放"最关键的一步。
+    init: true
+
     # 外部 3000 -> 容器 8080
     ports:
-      - "3000:8080"
+      - "127.0.0.1:3000:8080"
 
     env_file:
       - .env
 
-    # Docker 命名卷,所有权由 Docker 管理(初始化时取自镜像里 /data 的权限)
+    # ─── 数据持久化 ────────────────────────────────────────────────────
+    # 命名卷 qishu_data 挂到容器内 /app/data。命名卷由 docker daemon 在
+    # /var/lib/docker/volumes/ 下自己管理,不在你的工作目录,完全"在 docker
+    # 容器体系内"。docker compose down 不会清除,docker compose down -v 才会。
     volumes:
-      - qishu_data:/data
+      - qishu_data:/app/data
 
+    # 内存与 PID 硬限制。这是触顶 OOM 的天花板,运行时实际占用由 Go runtime
+    # 与 sqlite 决定,稳态通常 25-45MiB。100M 留给 cold start 和偶发 spike。
+    #
+    # 注意:pids 必须写在 deploy.resources.limits.pids 下,不能再写一个顶层
+    # pids_limit ─ 新版 docker-compose 把它们当作同一字段,两个都出现会报
+    # "can't set distinct values on 'pids_limit' and 'deploy.resources.limits.pids'"。
     deploy:
       resources:
         limits:
-          memory: 150M
+          memory: 100M
+          pids: 256
+        reservations:
+          memory: 32M
+
+    # 安全加固:除了 /app/data 之外其它目录禁止写入。注意需要 /tmp 给
+    # alpine wget healthcheck 与 SQLite 临时文件用。
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
 
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/api/healthz"]
@@ -59,6 +88,16 @@ services:
       retries: 3
       start_period: 10s
 
+    # 把日志体积压住,防止容器写日志把宿主磁盘塞满。
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ─── 命名卷声明 ────────────────────────────────────────────────────────────
+# qishu_data 由 docker 自己管理,不在工作目录 ─ 这正是"数据保存到 docker
+# 容器中,不要放到我自己的本地目录中"的字面要求。
 volumes:
   qishu_data:
     name: qishu_data

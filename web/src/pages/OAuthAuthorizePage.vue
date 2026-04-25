@@ -1,42 +1,72 @@
 <template>
   <div class="w-full max-w-md">
-    <div class="surface p-7">
-      <div v-if="loading" class="py-10 text-center text-muted">加载中…</div>
-      <div v-else-if="error" class="py-6 text-center">
-        <div class="text-red-600 font-medium mb-2">{{ error }}</div>
-        <a href="#/" class="text-sm text-accent-600 hover:underline">返回首页</a>
+    <div class="flex items-baseline justify-between mb-4">
+      <span class="archive-no">FORM № O-AUTH</span>
+      <span class="archive-no">VOL. I · § OAUTH</span>
+    </div>
+    <div class="rule-h-strong mb-6"></div>
+
+    <div class="surface-elevated p-8 sm:p-10">
+      <div v-if="loading" class="py-10 text-center">
+        <div class="archive-no">LOADING · 加载授权信息</div>
       </div>
+
+      <div v-else-if="error" class="py-6 text-center">
+        <div class="font-display text-2xl text-rust mb-3">{{ error }}</div>
+        <a href="#/" class="text-sm text-cinnabar hover:text-cinnabar-deep underline decoration-cinnabar/40">返回首页</a>
+      </div>
+
       <div v-else-if="info">
-        <div class="flex items-center gap-3 mb-5 pb-5 border-b border-slate-100">
-          <img v-if="info.client.logoUrl" :src="info.client.logoUrl" class="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200" alt="" />
-          <div v-else class="h-12 w-12 rounded-lg bg-accent-100 flex items-center justify-center text-accent-700 font-semibold text-lg">
+        <!-- 应用方头信息 -->
+        <div class="flex items-center gap-4 mb-6 pb-6 border-b border-rule-soft">
+          <div v-if="info.client.logoUrl" class="h-14 w-14 border border-rule-soft overflow-hidden">
+            <img :src="info.client.logoUrl" class="h-full w-full object-cover" alt="" />
+          </div>
+          <div v-else class="h-14 w-14 bg-cinnabar text-paper flex items-center justify-center font-display text-2xl rounded-sm">
             {{ (info.client.name || '?').charAt(0).toUpperCase() }}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="font-semibold text-slate-900 truncate">{{ info.client.name }}</div>
-            <a v-if="info.client.homepageUrl" :href="info.client.homepageUrl" target="_blank" rel="noopener" class="text-xs text-accent-600 hover:underline truncate block">{{ info.client.homepageUrl }}</a>
+            <div class="archive-no mb-1">第三方应用 · CLIENT</div>
+            <div class="h-sub truncate">{{ info.client.name }}</div>
+            <a v-if="info.client.homepageUrl" :href="info.client.homepageUrl" target="_blank" rel="noopener"
+               class="text-2xs text-cinnabar hover:text-cinnabar-deep font-mono truncate block mt-1">
+              {{ info.client.homepageUrl }} ↗
+            </a>
           </div>
         </div>
 
-        <p v-if="info.client.description" class="text-sm text-slate-700 mb-4">{{ info.client.description }}</p>
+        <p v-if="info.client.description" class="text-sm text-ash mb-5 leading-relaxed">
+          {{ info.client.description }}
+        </p>
 
-        <h2 class="text-sm font-semibold text-slate-900 mb-2">将获得以下权限:</h2>
-        <ul class="space-y-1.5 mb-6">
-          <li v-for="s in (info.requestedScopes || [])" :key="s" class="flex items-baseline gap-2 text-sm">
-            <span class="h-1.5 w-1.5 rounded-full bg-accent-500 mt-1.5 flex-shrink-0"></span>
-            <span class="text-slate-700">{{ scopeDescr(s) }}</span>
-            <span class="ml-auto text-xs text-slate-400 font-mono">{{ s }}</span>
+        <!-- 权限列表 -->
+        <div class="archive-no mb-3">REQUESTED SCOPES · 请求的权限</div>
+        <ul class="space-y-3 mb-6 border border-rule-soft p-4">
+          <li v-for="(s, i) in (info.requestedScopes || [])" :key="s"
+              class="flex items-baseline gap-3 text-sm">
+            <span class="font-mono text-2xs text-cinnabar tabular-nums">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="text-ink-2 flex-1">{{ scopeDescr(s) }}</span>
+            <span class="font-mono text-2xs text-ash-2 uppercase">{{ s }}</span>
           </li>
         </ul>
 
-        <div class="text-xs text-muted bg-slate-50 ring-1 ring-slate-100 rounded-lg p-3 mb-5">
-          点击 "允许" 后将作为 <span class="font-medium text-slate-700">{{ user?.name }}</span> 授权此应用。
-          授权后可在账户中心随时撤销。
-        </div>
+        <div class="archive-no mb-2 text-ash">授权说明</div>
+        <p class="text-sm text-ash leading-relaxed mb-6 surface-soft p-3">
+          点击 <span class="text-ink font-medium">允许</span> 后将作为
+          <span class="font-mono text-cinnabar">{{ user?.name }}</span>
+          授权此应用。授权后可在账户中心 → 已授权应用 中随时撤销。
+        </p>
 
-        <div class="flex gap-2">
-          <button @click="decide(false)" :disabled="busy" class="btn-secondary flex-1">拒绝</button>
-          <button @click="decide(true)" :disabled="busy" class="btn-primary flex-1">{{ busy ? '处理中…' : '允许' }}</button>
+        <!-- 操作 -->
+        <div class="grid grid-cols-2 gap-3">
+          <button @click="decide(false)" :disabled="busy" class="btn btn-secondary">
+            <span class="archive-no" style="color:inherit;">拒绝</span>
+          </button>
+          <button @click="decide(true)" :disabled="busy" class="btn btn-accent">
+            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
+              {{ busy ? '处理中…' : '允许 →' }}
+            </span>
+          </button>
         </div>
       </div>
     </div>
@@ -57,9 +87,9 @@ const busy = ref(false);
 const user = currentUser;
 
 const scopeDescriptions = {
-  openid: "使用您的账号 ID 登录",
+  openid:  "使用您的账号 ID 登录",
   profile: "读取您的显示名、头像",
-  email: "读取您的邮箱地址",
+  email:   "读取您的邮箱地址",
 };
 function scopeDescr(s) { return scopeDescriptions[s] || s; }
 
@@ -77,7 +107,6 @@ onMounted(async () => {
     });
     info.value = await api.get("/oauth/authorize/info?" + params.toString());
     if (info.value.preApproved) {
-      // 用户先前已同意相同 scope,直接 allow
       await decide(true);
       return;
     }

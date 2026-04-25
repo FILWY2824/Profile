@@ -1,45 +1,91 @@
 <template>
-  <div class="w-full max-w-sm">
-    <div class="surface p-7">
-      <div class="mb-6">
-        <h1 class="text-xl font-semibold tracking-tight text-slate-900">创建账号</h1>
-        <p class="text-sm text-muted mt-1">{{ step === 1 ? "填写下面信息以注册" : "请输入邮箱中的验证码" }}</p>
+  <div class="w-full max-w-md">
+    <div class="flex items-baseline justify-between mb-4">
+      <span class="archive-no">FORM № R-001</span>
+      <a href="#/" class="archive-no hover:text-ink transition-colors">← 返回</a>
+    </div>
+    <div class="rule-h-strong mb-6"></div>
+
+    <div class="surface-elevated p-8 sm:p-10">
+      <div class="flex items-center gap-4 mb-7">
+        <span class="seal seal-lg">栖</span>
+        <div>
+          <div class="archive-no mb-1">REGISTER · 入册</div>
+          <h1 class="h-section">{{ step === 1 ? "创建档案" : "确认验证" }}</h1>
+        </div>
       </div>
 
-      <form v-if="step === 1" @submit.prevent="onSendCode" class="space-y-4">
+      <!-- 步骤指示 -->
+      <div class="flex items-center gap-3 mb-6">
+        <div class="flex items-center gap-2">
+          <span :class="['archive-no-strong tabular-nums', step === 1 ? 'text-cinnabar' : 'text-ash']">01</span>
+          <span :class="step === 1 ? 'text-ink font-medium text-sm' : 'text-ash text-sm'">填写资料</span>
+        </div>
+        <div class="flex-1 h-px bg-rule-soft"></div>
+        <div class="flex items-center gap-2">
+          <span :class="['archive-no-strong tabular-nums', step === 2 ? 'text-cinnabar' : 'text-ash']">02</span>
+          <span :class="step === 2 ? 'text-ink font-medium text-sm' : 'text-ash text-sm'">邮箱核验</span>
+        </div>
+      </div>
+
+      <div class="rule-h mb-6"></div>
+
+      <form v-if="step === 1" @submit.prevent="onSendCode" class="space-y-5">
         <div>
-          <label class="label">邮箱</label>
-          <input v-model="email" type="email" required class="input" placeholder="you@example.com" />
+          <label class="label">邮箱地址</label>
+          <input v-model="email" type="email" required class="input input-mono" placeholder="you@example.com" />
         </div>
         <div>
-          <label class="label">显示名</label>
+          <label class="label">显示名 / Display Name</label>
           <input v-model="name" required maxlength="60" class="input" placeholder="昵称" />
         </div>
         <div>
-          <label class="label">密码</label>
-          <input v-model="password" type="password" required minlength="8" class="input" placeholder="至少 8 字符" />
+          <label class="label">密码 (≥ 8 字符)</label>
+          <input v-model="password" type="password" required minlength="8" class="input input-mono" placeholder="••••••••" />
         </div>
 
-        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile"></div>
+        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
 
-        <button :disabled="busy" class="btn-primary w-full">{{ busy ? "发送中…" : "发送验证码" }}</button>
+        <div class="pt-3">
+          <button :disabled="busy" class="btn btn-primary w-full">
+            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
+              {{ busy ? "正在投递…" : "发送验证码 →" }}
+            </span>
+          </button>
+        </div>
       </form>
 
-      <form v-else @submit.prevent="onConfirm" class="space-y-4">
-        <div class="text-sm text-muted bg-slate-50 ring-1 ring-slate-100 rounded-lg p-3">
-          验证码已发送至 <span class="font-mono text-slate-900">{{ email }}</span>
+      <form v-else @submit.prevent="onConfirm" class="space-y-5">
+        <div class="surface-soft p-4">
+          <div class="archive-no mb-1">已投递至</div>
+          <div class="font-mono text-sm text-ink truncate">{{ email }}</div>
         </div>
-        <div v-if="devCode" class="text-xs bg-amber-50 ring-1 ring-amber-200/70 rounded-lg p-3 text-amber-800">
-          <span class="font-medium">[开发模式]</span> 验证码:<span class="font-mono ml-1">{{ devCode }}</span>
+        <div v-if="devCode" class="border border-ochre/40 bg-ochre/5 p-3 text-2xs">
+          <span class="archive-no text-ochre">DEV MODE · 开发模式</span>
+          <div class="font-mono text-ink mt-1">验证码: <span class="text-cinnabar font-semibold">{{ devCode }}</span></div>
         </div>
         <div>
-          <label class="label">6 位验证码</label>
+          <label class="label">六位验证码</label>
           <input v-model="code" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
-                 class="input text-center text-lg font-mono tracking-[0.4em]" placeholder="000000" />
+                 class="input input-mono text-center text-2xl font-semibold tracking-[0.5em]"
+                 placeholder="000000" />
         </div>
-        <button :disabled="busy" class="btn-primary w-full">{{ busy ? "验证中…" : "完成注册" }}</button>
-        <button type="button" @click="step = 1" class="btn-ghost w-full">返回上一步</button>
+        <div class="pt-1 space-y-2">
+          <button :disabled="busy" class="btn btn-primary w-full">
+            <span class="archive-no" style="color:inherit;letter-spacing:0.3em;">
+              {{ busy ? "核验中…" : "完成入册 →" }}
+            </span>
+          </button>
+          <button type="button" @click="step = 1" class="btn btn-ghost w-full">
+            <span class="archive-no">← 返回上一步</span>
+          </button>
+        </div>
       </form>
+    </div>
+
+    <div class="mt-6 flex items-center justify-between">
+      <span class="archive-no">QISHU · VOL. I</span>
+      <a href="#/login" class="archive-no hover:text-ink transition-colors">已有账号 · 登入 →</a>
     </div>
   </div>
 </template>

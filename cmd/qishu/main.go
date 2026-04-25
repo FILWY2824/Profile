@@ -34,6 +34,10 @@ func main() {
 }
 
 func run() error {
+	// 第一步:把 runtime 内存上限/GC/GOMAXPROCS 调到位,启动 scavenger。
+	// 必须在任何其它分配之前完成,避免冷启动期间 RSS 飙得过高。
+	scavengeStop := applyRuntimeTuning()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
@@ -203,6 +207,8 @@ func run() error {
 		Users: users, Sections: sections, Cards: cards,
 	}).Register(adminG.Group("/dashboard"))
 
+	(&handler.AdminRuntimeHandler{}).Register(adminG.Group("/runtime"))
+
 	(&handler.AdminAuditHandler{
 		LoginHistory: loginHist, ActivityLog: activityLog,
 	}).Register(adminG)
@@ -238,7 +244,12 @@ func run() error {
 		Addr:              cfg.ListenAddr,
 		Handler:           e,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		// 8 KiB 头部上限。默认 1 MiB,对一个请求 < 1KB header 的内部服务来说
+		// 是巨大的浪费。压低也是 slowloris/慢攻击的二级防御。
+		MaxHeaderBytes: 8 << 10,
 	}
 
 	errCh := make(chan error, 1)
@@ -263,6 +274,7 @@ func run() error {
 	defer cancel()
 	close(stopSweep)
 	close(prunerStop)
+	close(scavengeStop)
 	return srv.Shutdown(ctx)
 }
 

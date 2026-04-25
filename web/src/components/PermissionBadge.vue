@@ -1,17 +1,18 @@
 <template>
-  <span :class="cls" class="badge">{{ label }}</span>
+  <span :class="['badge', cls]">{{ label }}</span>
 </template>
 
 <script setup>
 import { computed } from "vue";
-const props = defineProps({ value: String });
-const map = {
-  public: { label: "公开", cls: "badge-slate" },
-  user: { label: "用户", cls: "badge-accent" },
-  member: { label: "成员", cls: "badge-emerald" },
-  admin: { label: "管理员", cls: "badge-amber" },
-};
-const m = computed(() => map[props.value] || { label: props.value, cls: "badge-slate" });
-const label = computed(() => m.value.label);
-const cls = computed(() => m.value.cls);
+const props = defineProps({ role: String });
+const cls = computed(() => {
+  if (props.role === "admin") return "badge-cinnabar";
+  if (props.role === "member") return "badge-ink";
+  return "badge-ash";
+});
+const label = computed(() => ({
+  admin: "ADMIN",
+  member: "MEMBER",
+  user: "USER",
+})[props.role] || (props.role || "—").toUpperCase());
 </script>

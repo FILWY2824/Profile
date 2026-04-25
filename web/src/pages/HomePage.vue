@@ -1,41 +1,66 @@
 <template>
   <div>
-    <!-- Hero -->
-    <header class="mb-10">
-      <div class="mb-3 inline-flex items-center gap-2 rounded-full bg-accent-50 px-3 py-1 text-xs font-medium text-accent-700 ring-1 ring-accent-200/70">
-        <span class="h-1.5 w-1.5 rounded-full bg-accent-500"></span>
-        在线
+    <!-- 档案号 / Hero -->
+    <header class="mb-12 sm:mb-16">
+      <div class="flex items-baseline justify-between gap-4 mb-3">
+        <span class="archive-no">VOL. I · ARCHIVE № 001</span>
+        <span class="archive-no hidden sm:inline">{{ today }}</span>
       </div>
-      <h1 class="h-page text-3xl sm:text-4xl">{{ siteName }}</h1>
-      <p v-if="siteDescription" class="mt-2 text-tinted">{{ siteDescription }}</p>
+
+      <div class="rule-double mb-6"></div>
+
+      <h1 class="h-page mb-4">
+        {{ siteName }}<span class="text-cinnabar">.</span>
+      </h1>
+
+      <p v-if="siteDescription" class="text-lg text-ash max-w-2xl leading-relaxed font-serif" style="font-variation-settings:'opsz' 36, 'SOFT' 50;">
+        {{ siteDescription }}
+      </p>
+      <p v-else class="text-lg text-ash max-w-2xl leading-relaxed font-serif" style="font-variation-settings:'opsz' 36, 'SOFT' 50;">
+        一处栖息思考、串联万物的私人档案室。
+      </p>
     </header>
 
-    <div v-if="loading" class="flex items-center justify-center py-20 text-slate-400 text-sm">
-      正在加载…
+    <!-- 加载/空态 -->
+    <div v-if="loading" class="py-20 text-center">
+      <div class="archive-no">LOADING · 正在调取档案</div>
     </div>
 
-    <div v-else-if="!sections.length" class="surface p-10 text-center text-muted">
-      <div class="text-4xl mb-2">📭</div>
-      <p>暂无内容</p>
-      <p class="text-xs mt-1">管理员可在 <a href="#/admin" class="text-accent-600 hover:underline">后台</a> 创建板块和卡片</p>
+    <div v-else-if="!sections.length && !orphanCards.length" class="surface p-12 text-center">
+      <div class="seal seal-lg mx-auto mb-4 opacity-30">栖</div>
+      <p class="h-sub mb-2">档案室空空如也</p>
+      <p class="text-sm text-ash">
+        管理员可在
+        <a href="#/admin" class="underline decoration-cinnabar/40 hover:decoration-cinnabar">后台</a>
+        创建板块与卡片
+      </p>
     </div>
 
-    <div v-else class="space-y-10">
-      <section v-for="sec in sections" :key="sec.id">
-        <header class="mb-4 flex items-baseline justify-between">
-          <h2 class="h-section">{{ sec.name }}</h2>
-          <p v-if="sec.description" class="text-xs text-muted">{{ sec.description }}</p>
+    <!-- 板块列表 -->
+    <div v-else class="space-y-16">
+      <section v-for="(sec, idx) in sections" :key="sec.id" class="animate-fade-up" :style="{ animationDelay: `${idx * 60}ms` }">
+        <header class="mb-5 flex items-end justify-between gap-4 flex-wrap">
+          <div class="flex items-baseline gap-4 flex-1 min-w-0">
+            <span class="archive-no-strong tabular-nums">{{ pad(idx + 1) }}.</span>
+            <h2 class="h-section truncate">{{ sec.name }}</h2>
+          </div>
+          <p v-if="sec.description" class="text-sm text-ash italic max-w-md text-right">
+            {{ sec.description }}
+          </p>
         </header>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="rule-h mb-6"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <CardTile v-for="c in cardsBySection(sec.id)" :key="c.id" :card="c" />
         </div>
       </section>
 
-      <section v-if="orphanCards.length">
-        <header class="mb-4">
-          <h2 class="h-section text-slate-600">其它</h2>
+      <section v-if="orphanCards.length" class="animate-fade-up" :style="{ animationDelay: `${sections.length * 60}ms` }">
+        <header class="mb-5 flex items-baseline gap-4">
+          <span class="archive-no-strong tabular-nums">{{ pad(sections.length + 1) }}.</span>
+          <h2 class="h-section">未分卷宗</h2>
         </header>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="rule-h mb-6"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <CardTile v-for="c in orphanCards" :key="c.id" :card="c" />
         </div>
       </section>
@@ -62,6 +87,16 @@ const orphanCards = computed(() =>
   cards.value.filter((c) => !c.sectionId).sort((a, b) => a.order - b.order),
 );
 
+const today = computed(() => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}.${m}.${day}`;
+});
+
+function pad(n) { return String(n).padStart(2, "0"); }
+
 onMounted(async () => {
   try {
     const data = await api.get("/homepage");
@@ -69,7 +104,7 @@ onMounted(async () => {
     cards.value = data.cards || [];
     siteName.value = data.siteName || "栖枢";
     siteDescription.value = data.siteDescription || "";
-    document.title = siteName.value;
+    document.title = siteName.value + " · Qishu Archive";
   } catch (e) {
     console.error(e);
   } finally {

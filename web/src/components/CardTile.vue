@@ -3,28 +3,43 @@
     :href="card.url"
     target="_blank"
     rel="noopener noreferrer"
-    class="surface-hover group block p-4"
+    class="group relative block surface-hover p-5 overflow-hidden"
   >
-    <div class="flex items-start gap-3">
-      <div class="h-10 w-10 rounded-lg bg-slate-100 ring-1 ring-slate-200/70 overflow-hidden flex-shrink-0 flex items-center justify-center">
-        <img
-          v-if="!iconFailed"
-          :src="iconURL"
-          @error="iconFailed = true"
-          class="h-6 w-6"
-          alt=""
-        />
-        <span v-else class="text-slate-400 font-medium text-sm">{{ initial }}</span>
-      </div>
-      <div class="flex-1 min-w-0">
-        <div class="flex items-baseline gap-2">
-          <h3 class="font-semibold text-slate-900 truncate group-hover:text-accent-700 transition-colors">
-            {{ card.title }}
-          </h3>
+    <!-- 序号 / 角标 -->
+    <div class="flex items-start justify-between gap-3 mb-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <!-- 图标盒 -->
+        <div class="h-10 w-10 flex-shrink-0 border border-rule-soft bg-paper-200 overflow-hidden flex items-center justify-center group-hover:border-ink transition-colors">
+          <img
+            v-if="!iconFailed"
+            :src="iconURL"
+            @error="iconFailed = true"
+            class="h-6 w-6"
+            alt=""
+          />
+          <span v-else class="font-display text-base text-ink/60">{{ initial }}</span>
         </div>
-        <p v-if="card.description" class="text-xs text-slate-500 mt-0.5 line-clamp-2">{{ card.description }}</p>
-        <div class="text-[11px] text-slate-400 mt-1.5 truncate font-mono">{{ originHost }}</div>
+        <!-- 标题 -->
+        <h3 class="h-sub truncate group-hover:text-cinnabar transition-colors">
+          {{ card.title }}
+        </h3>
       </div>
+      <!-- 右上角 ↗ 箭头 -->
+      <span class="archive-no opacity-30 group-hover:opacity-100 group-hover:text-cinnabar transition-all flex-shrink-0 mt-0.5">
+        ↗
+      </span>
+    </div>
+
+    <!-- 描述 -->
+    <p v-if="card.description" class="text-sm text-ash leading-relaxed line-clamp-2 mb-3">
+      {{ card.description }}
+    </p>
+
+    <!-- 底部 hairline + URL host -->
+    <div class="rule-h opacity-50 mb-2"></div>
+    <div class="flex items-center gap-2 font-mono text-2xs text-ash-2 truncate">
+      <span class="text-cinnabar">·</span>
+      <span class="truncate">{{ originHost }}</span>
     </div>
   </a>
 </template>
