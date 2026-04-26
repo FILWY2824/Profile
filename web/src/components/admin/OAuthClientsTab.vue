@@ -1,12 +1,14 @@
 <template>
-  <div class="space-y-6">
-    <header class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <h1 class="h-page">OAuth 客户端<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 个已注册客户端</p>
-      </div>
+  <div class="space-y-5">
+    <header class="admin-tab-head">
+      <h1 class="h-page">OAuth 客户端<span class="text-teal-300">.</span></h1>
       <button @click="openCreate" class="btn btn-primary">+ 新建客户端</button>
     </header>
+
+    <div class="admin-toolbar">
+      <input v-model="search" placeholder="搜索名称 / Client ID / 描述…" class="input admin-search" />
+      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+    </div>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
@@ -32,14 +34,16 @@
                 <button @click="onDelete(c)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
-            <tr v-if="items.length === 0">
-              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无客户端</td>
+            <tr v-if="filteredItems.length === 0">
+              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">
+                {{ items.length === 0 ? '暂无客户端' : '没有匹配的客户端' }}
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div v-if="items.length > 0" class="px-4 py-2">
-        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      <div v-if="filteredItems.length > 0" class="px-4 py-2">
+        <Pagination :total="filteredItems.length" v-model:current-page="page" :page-size="10" />
       </div>
     </div>
 
@@ -122,7 +126,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import { useConfirm } from "../../confirm.js";
@@ -136,14 +140,25 @@ const editing = ref(null);
 const busy = ref(false);
 const secretInfo = ref({});
 const page = ref(1);
+const search = ref("");
 const PAGE_SIZE = 10;
+
+const filteredItems = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return items.value;
+  return items.value.filter(c =>
+    (c.name || "").toLowerCase().includes(q) ||
+    (c.clientId || "").toLowerCase().includes(q) ||
+    (c.description || "").toLowerCase().includes(q));
+});
 
 const pagedItems = computed(() => {
   const start = (page.value - 1) * PAGE_SIZE;
-  return items.value.slice(start, start + PAGE_SIZE);
+  return filteredItems.value.slice(start, start + PAGE_SIZE);
 });
 
-// OAuth 标准 scope 集合 — 复选框列表替代之前的"空格分隔"自由文本输入。
+watch(search, () => { page.value = 1; });
+
 const availableScopes = [
   { value: "openid",         description: "OpenID Connect 必要 scope,标识用户身份" },
   { value: "profile",        description: "用户基础资料(姓名、头像、简介)" },
@@ -249,6 +264,30 @@ onMounted(load);
 </script>
 
 <style scoped>
+.admin-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.admin-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
 .admin-thead {
   border-bottom: 1px solid rgba(15, 36, 25, 0.10);
   background-color: rgba(255, 255, 255, 0.55);

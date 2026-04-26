@@ -88,3 +88,13 @@ func (r *FaviconRepo) Delete(origin string) error {
 	}
 	return nil
 }
+
+// DeleteAll 一次性清空 favicon_cache。给管理员"一键清理图标缓存"用。
+// 返回被删除的行数。
+func (r *FaviconRepo) DeleteAll() (int64, error) {
+	res, err := r.db.Exec(`DELETE FROM favicon_cache`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

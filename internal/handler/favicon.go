@@ -471,21 +471,33 @@ func (h *FaviconHandler) listAdmin(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
+	type cardRef struct {
+		Title       string `json:"title"`
+		SectionName string `json:"sectionName"`
+	}
 	type adminRow struct {
-		Origin         string `json:"origin"`
-		ContentType    string `json:"contentType"`
-		Source         string `json:"source"`
-		FetchedAt      string `json:"fetchedAt"`
-		FailedAttempts int    `json:"failedAttempts"`
-		LastError      string `json:"lastError,omitempty"`
-		HasData        bool   `json:"hasData"`
+		Origin         string    `json:"origin"`
+		ContentType    string    `json:"contentType"`
+		Source         string    `json:"source"`
+		FetchedAt      string    `json:"fetchedAt"`
+		FailedAttempts int       `json:"failedAttempts"`
+		LastError      string    `json:"lastError,omitempty"`
+		HasData        bool      `json:"hasData"`
+		Cards          []cardRef `json:"cards"`
 	}
 	out := make([]adminRow, 0, len(rows))
 	for _, r := range rows {
+		// 关联的卡片(title + section name)。失败不致命,空数组而已。
+		refs, _ := h.Cards.CardsByOrigin(r.Origin)
+		cards := make([]cardRef, 0, len(refs))
+		for _, ref := range refs {
+			cards = append(cards, cardRef{Title: ref.Title, SectionName: ref.SectionName})
+		}
 		out = append(out, adminRow{
 			Origin: r.Origin, ContentType: r.ContentType, Source: r.Source,
 			FetchedAt: r.FetchedAt, FailedAttempts: r.FailedAttempts,
 			LastError: r.LastError, HasData: r.DataURL != "",
+			Cards: cards,
 		})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": out})

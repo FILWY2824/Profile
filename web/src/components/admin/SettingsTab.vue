@@ -1,19 +1,21 @@
 <template>
   <div class="space-y-6 pb-24">
-    <header>
-      <h1 class="h-page">系统设置<span class="text-teal-300">.</span></h1>
-      <p class="text-fg-dim text-sm mt-1.5">所有改动只对新会话生效;部分项保存后立即热重载</p>
-    </header>
-
     <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
       <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine mr-2 align-middle"></span>
       加载中
     </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-5">
-      <!-- Category sidebar -->
-      <aside class="lg:sticky lg:top-24 lg:self-start space-y-3">
+    <div v-else class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-5">
+      <!-- 左:固定的子侧栏 - 标题/副标题在最上方,搜索框、分类、未保存堆叠、
+           数据保留(prune 工具)依次往下。整页不再有顶部的大 H1。 -->
+      <aside class="lg:sticky lg:top-0 lg:self-start space-y-3 settings-side">
+        <div class="settings-side-head">
+          <h2 class="settings-side-title">系统设置<span class="text-teal-300">.</span></h2>
+          <p class="settings-side-sub">所有改动只对新会话生效;部分项保存后立即热重载</p>
+        </div>
+
         <input v-model="search" placeholder="搜索键名 / 描述…" class="input" />
+
         <div class="surface p-2 space-y-0.5">
           <button @click="activeCategory = 'all'"
                   :class="['tab-pill', activeCategory === 'all' && 'tab-pill-active']">
@@ -35,6 +37,36 @@
             <li v-for="k in modifiedKeys.slice(0, 8)" :key="k">{{ k }}</li>
             <li v-if="modifiedKeys.length > 8" class="opacity-70">…还有 {{ modifiedKeys.length - 8 }} 项</li>
           </ul>
+        </div>
+
+        <!-- 数据保留 / 一键清理 — 用户要求:可以勾选具体内容批量清理。
+             单选清理可继续点每行的 "清理" 按钮,批量则用上方多选 + "清理选中" -->
+        <div class="surface p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-fg uppercase tracking-wider">数据保留 · 一键清理</span>
+          </div>
+          <p class="text-[11px] text-fg-mute leading-relaxed">
+            勾选后点 "清理选中" 一次清掉全部勾选项;也可以单独点每行的清理按钮。
+          </p>
+          <ul class="space-y-1.5">
+            <li v-for="t in pruneTargets" :key="t.key" class="prune-row">
+              <label class="prune-label">
+                <input type="checkbox" v-model="pruneSelected[t.key]" :disabled="pruneBusy" />
+                <span class="prune-name">{{ t.label }}</span>
+              </label>
+              <button @click="pruneOne(t.key)" :disabled="pruneBusy"
+                      class="btn btn-ghost btn-sm">清理</button>
+            </li>
+          </ul>
+          <div class="flex items-center gap-2 pt-1">
+            <button @click="selectAllPrune(true)" class="text-[11px] text-fg-dim hover:text-fg">全选</button>
+            <span class="text-fg-mute text-[11px]">·</span>
+            <button @click="selectAllPrune(false)" class="text-[11px] text-fg-dim hover:text-fg">清空</button>
+            <button @click="pruneBatch" :disabled="pruneBusy || selectedCount === 0"
+                    class="btn btn-secondary btn-sm ml-auto">
+              {{ pruneBusy ? '清理中…' : `清理选中 (${selectedCount})` }}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -59,9 +91,10 @@
             </div>
 
             <div class="md:col-span-2">
-              <select v-if="row.key === 'TURNSTILE_ENABLED'" v-model="dirty[row.key]" class="input">
-                <option value="1">启用</option>
-                <option value="0">关闭</option>
+              <select v-if="row.key === 'TURNSTILE_ENABLED' || row.key === 'TURNSTILE_SEND_REMOTEIP'"
+                      v-model="dirty[row.key]" class="input">
+                <option value="1">启用 (1)</option>
+                <option value="0">关闭 (0)</option>
               </select>
               <textarea v-else-if="row.value && row.value.length > 80"
                         v-model="dirty[row.key]" rows="3" class="input input-mono"></textarea>
@@ -100,6 +133,7 @@
 import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import { useConfirm } from "../../confirm.js";
 
 const items = ref([]);
 const dirty = ref({});
@@ -120,10 +154,29 @@ const categoryMeta = {
 };
 
 const hotReloadKeys = new Set([
-  "TURNSTILE_ENABLED", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY",
+  "TURNSTILE_ENABLED", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", "TURNSTILE_SEND_REMOTEIP",
   "RESEND_API_KEY", "RESEND_FROM",
 ]);
 function isHotReload(k) { return hotReloadKeys.has(k); }
+
+// ─── 数据保留 / 清理目标 ──────────────────────────────────────────────
+// 之前只有 2 项,实际可清理的内容远不止两项。把 vcodes/pending 这种短期表
+// 也暴露出来,加上 favicons / oauth-codes / oauth-tokens-expired,共 7 个目标。
+const pruneTargets = [
+  { key: "vcodes",               label: "过期验证码 (vcodes)" },
+  { key: "pending",              label: "过期待注册 (pending)" },
+  { key: "login-history",        label: "登录历史 (按保留天数)" },
+  { key: "activity-log",         label: "活动日志 (按保留天数)" },
+  { key: "oauth-codes",          label: "过期 OAuth 授权码" },
+  { key: "oauth-tokens-expired", label: "过期 OAuth token" },
+  { key: "favicons",             label: "全部图标缓存" },
+];
+const pruneSelected = ref({});
+const pruneBusy = ref(false);
+const selectedCount = computed(() => pruneTargets.filter(t => pruneSelected.value[t.key]).length);
+function selectAllPrune(v) {
+  for (const t of pruneTargets) pruneSelected.value[t.key] = v;
+}
 
 const categories = computed(() => {
   const counts = {};
@@ -190,10 +243,87 @@ async function save() {
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 
+async function pruneOne(table) {
+  const target = pruneTargets.find(t => t.key === table);
+  const ok = await useConfirm({
+    title: "清理数据",
+    message: `确认清理 "${target?.label || table}"?`,
+    detail: "已被清理的数据无法恢复。",
+    kind: "danger",
+    confirmText: "立即清理",
+  });
+  if (!ok) return;
+  try {
+    const r = await api.post(`/admin/retention/${table}/prune`);
+    okToast(`已清理 ${r.removed ?? 0} 条 (${target?.label || table})`);
+  } catch (e) { errToast(e.message); }
+}
+
+async function pruneBatch() {
+  if (pruneBusy.value) return;
+  const sel = pruneTargets.filter(t => pruneSelected.value[t.key]);
+  if (sel.length === 0) return;
+  const ok = await useConfirm({
+    title: "批量清理",
+    message: `确认一键清理勾选的 ${sel.length} 类数据?`,
+    detail: sel.map(t => "· " + t.label).join("\n"),
+    kind: "danger",
+    confirmText: `清理 ${sel.length} 类`,
+  });
+  if (!ok) return;
+  pruneBusy.value = true;
+  let totalRemoved = 0;
+  let okCount = 0;
+  let failCount = 0;
+  for (const t of sel) {
+    try {
+      const r = await api.post(`/admin/retention/${t.key}/prune`);
+      totalRemoved += (r.removed || 0);
+      okCount++;
+    } catch (e) {
+      failCount++;
+      // 不打断整批,只在 toast 上报告失败次数
+      // eslint-disable-next-line no-console
+      console.warn(`prune ${t.key} failed:`, e.message);
+    }
+  }
+  pruneBusy.value = false;
+  if (failCount === 0) {
+    okToast(`已清理 ${okCount} 类、共 ${totalRemoved} 条`);
+  } else {
+    errToast(`完成 ${okCount} / 失败 ${failCount} · 共清理 ${totalRemoved} 条`);
+  }
+}
+
 onMounted(load);
 </script>
 
 <style scoped>
+.settings-side {
+  /* 给侧栏一个稳定背景层级 */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-side-head {
+  padding: 4px 8px 8px;
+}
+.settings-side-title {
+  font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.022em;
+  color: var(--fg);
+  line-height: 1.1;
+  font-variation-settings: "opsz" 36;
+}
+.settings-side-sub {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
 .settings-modified-pile {
   background-color: rgba(254, 243, 199, 0.55);
   backdrop-filter: blur(12px);
@@ -205,6 +335,31 @@ onMounted(load);
   border-color: rgba(217, 119, 6, 0.40) !important;
   background-color: rgba(254, 243, 199, 0.45) !important;
 }
+
+/* prune 行 */
+.prune-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prune-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.prune-label input[type="checkbox"] {
+  accent-color: var(--brand);
+  flex-shrink: 0;
+}
+.prune-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .floating-save-bar {
   position: fixed;
   bottom: 16px;

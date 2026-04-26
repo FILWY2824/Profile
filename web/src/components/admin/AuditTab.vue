@@ -1,17 +1,25 @@
 <template>
-  <div class="space-y-6">
-    <header>
-      <h1 class="h-page">审计<span class="text-teal-300">.</span></h1>
-      <p class="text-fg-dim text-sm mt-1.5">登录历史与活动日志</p>
+  <div class="space-y-5">
+    <header class="admin-tab-head">
+      <h1 class="h-page">审计日志<span class="text-teal-300">.</span></h1>
+      <div class="audit-subtabs">
+        <button v-for="t in tabs" :key="t.id"
+                @click="setActive(t.id)"
+                :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
+          {{ t.label }}
+        </button>
+      </div>
     </header>
 
-    <!-- 子 Tab 切换 -->
-    <div class="audit-subtabs">
-      <button v-for="t in tabs" :key="t.id"
-              @click="setActive(t.id)"
-              :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
-        {{ t.label }}
-      </button>
+    <div class="admin-toolbar">
+      <input v-if="active === 'login'" v-model="loginSearch"
+             placeholder="搜索邮箱 / IP / 原因…" class="input admin-search" />
+      <input v-else v-model="activitySearch"
+             placeholder="搜索用户 / action / 详情…" class="input admin-search" />
+      <span class="admin-count">
+        <template v-if="active === 'login'">共 {{ filteredLoginRows.length }} / {{ loginTotal }} 条 (当前页)</template>
+        <template v-else>共 {{ filteredActivityRows.length }} / {{ activityTotal }} 条 (当前页)</template>
+      </span>
     </div>
 
     <!-- 登录历史 -->
@@ -28,10 +36,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loginRows.length === 0">
-              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无登录记录</td>
+            <tr v-if="filteredLoginRows.length === 0">
+              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">
+                {{ loginRows.length === 0 ? '暂无登录记录' : '没有匹配当前搜索' }}
+              </td>
             </tr>
-            <tr v-for="r in loginRows" :key="r.id" class="admin-row">
+            <tr v-for="r in filteredLoginRows" :key="r.id" class="admin-row">
               <td class="px-4 py-3 text-xs text-fg-dim font-mono whitespace-nowrap">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.email }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg-dim whitespace-nowrap">{{ r.ip }}</td>
@@ -64,10 +74,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="activityRows.length === 0">
-              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无活动记录</td>
+            <tr v-if="filteredActivityRows.length === 0">
+              <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">
+                {{ activityRows.length === 0 ? '暂无活动记录' : '没有匹配当前搜索' }}
+              </td>
             </tr>
-            <tr v-for="r in activityRows" :key="r.id" class="admin-row">
+            <tr v-for="r in filteredActivityRows" :key="r.id" class="admin-row">
               <td class="px-4 py-3 text-xs text-fg-dim font-mono whitespace-nowrap">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.username || r.email || '—' }}</td>
               <td class="px-4 py-3 whitespace-nowrap"><span class="badge-slate">{{ r.action }}</span></td>
@@ -85,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { errToast } from "../../toast.js";
 import { formatDateTime } from "../../format.js";
@@ -97,10 +109,31 @@ const active = ref("login");
 const loginRows = ref([]);
 const loginTotal = ref(0);
 const loginPage = ref(1);
+const loginSearch = ref("");
 
 const activityRows = ref([]);
 const activityTotal = ref(0);
 const activityPage = ref(1);
+const activitySearch = ref("");
+
+const filteredLoginRows = computed(() => {
+  const q = loginSearch.value.trim().toLowerCase();
+  if (!q) return loginRows.value;
+  return loginRows.value.filter(r =>
+    (r.email || "").toLowerCase().includes(q) ||
+    (r.ip || "").toLowerCase().includes(q) ||
+    (r.reason || "").toLowerCase().includes(q));
+});
+
+const filteredActivityRows = computed(() => {
+  const q = activitySearch.value.trim().toLowerCase();
+  if (!q) return activityRows.value;
+  return activityRows.value.filter(r =>
+    (r.username || "").toLowerCase().includes(q) ||
+    (r.email || "").toLowerCase().includes(q) ||
+    (r.action || "").toLowerCase().includes(q) ||
+    (r.detail || "").toLowerCase().includes(q));
+});
 
 async function loadLogin() {
   try {
@@ -133,6 +166,30 @@ onMounted(loadLogin);
 </script>
 
 <style scoped>
+.admin-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.admin-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
 .audit-subtabs {
   display: inline-flex;
   align-items: center;

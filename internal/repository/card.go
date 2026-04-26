@@ -178,3 +178,48 @@ func (r *CardRepo) URLsByOrigin(origin string) ([]string, error) {
 	}
 	return out, rows.Err()
 }
+
+// CardOriginRef 描述某 origin 下的一张卡片的展示信息(title + 板块名),
+// 给图标缓存管理页用 —— 管理员一眼就知道这个 origin 是哪几张卡片在用。
+type CardOriginRef struct {
+	Title       string
+	SectionName string // 板块名,无所属时空字符串
+}
+
+// CardsByOrigin 返回引用了 origin 的全部卡片,每张卡片附带板块名称。
+// 内部 LEFT JOIN sections,无所属板块时 sectionName 为空。
+func (r *CardRepo) CardsByOrigin(origin string) ([]CardOriginRef, error) {
+	esc := func(s string) string {
+		var b strings.Builder
+		for _, c := range s {
+			switch c {
+			case '\\', '%', '_':
+				b.WriteByte('\\')
+			}
+			b.WriteRune(c)
+		}
+		return b.String()
+	}
+	pattern := esc(origin) + "/%"
+	rows, err := r.db.Query(`
+		SELECT c.title, COALESCE(s.name, '')
+		FROM cards c
+		LEFT JOIN sections s ON s.id = c.section_id
+		WHERE c.url = ? OR c.url LIKE ? ESCAPE '\'
+		ORDER BY c.sort_order ASC, c.created_at ASC`,
+		origin, pattern,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CardOriginRef
+	for rows.Next() {
+		var ref CardOriginRef
+		if err := rows.Scan(&ref.Title, &ref.SectionName); err != nil {
+			return nil, err
+		}
+		out = append(out, ref)
+	}
+	return out, rows.Err()
+}

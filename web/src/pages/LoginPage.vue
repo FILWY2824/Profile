@@ -27,11 +27,16 @@
           <PasswordInput v-model="password" required autocomplete="current-password" placeholder="••••••••" />
         </div>
 
-        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
+        <div v-if="ts.enabled.value" class="pt-1">
+          <div :ref="el => (ts.container.value = el)"></div>
+          <p v-if="ts.loaded.value && !ts.token.value" class="text-xs text-fg-mute mt-2">
+            请先完成上方人机验证
+          </p>
+        </div>
 
         <div class="pt-2">
-          <button :disabled="busy" class="btn btn-primary w-full">
-            {{ busy ? "正在登录…" : "登录" }}
+          <button :disabled="busy || !ts.canSubmit.value" class="btn btn-primary w-full">
+            {{ submitLabel }}
           </button>
         </div>
       </form>
@@ -53,52 +58,44 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed } from "vue";
 import { api } from "../api.js";
 import { loadSession } from "../session.js";
 import { navigate } from "../router.js";
 import { errToast, okToast } from "../toast.js";
 import PasswordInput from "../components/PasswordInput.vue";
+import { useTurnstile } from "../composables/useTurnstile.js";
 
 const email = ref("");
 const password = ref("");
 const busy = ref(false);
-const turnstileSiteKey = ref("");
+const ts = useTurnstile();
 
-const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-
-onMounted(async () => {
-  try {
-    const cfg = await api.get("/auth/turnstile-config");
-    if (cfg.enabled && cfg.siteKey) {
-      turnstileSiteKey.value = cfg.siteKey;
-      // 防止 SPA 内反复挂载时重复加载脚本
-      if (!document.querySelector(`script[src="${TURNSTILE_SCRIPT}"]`)) {
-        const s = document.createElement("script");
-        s.src = TURNSTILE_SCRIPT;
-        s.async = true;
-        s.defer = true;
-        document.head.appendChild(s);
-      } else if (window.turnstile) {
-        setTimeout(() => window.turnstile.render?.(".cf-turnstile"), 0);
-      }
-    }
-  } catch {}
+const submitLabel = computed(() => {
+  if (busy.value) return "正在登录…";
+  if (ts.enabled.value && !ts.token.value) return "请完成人机验证";
+  return "登录";
 });
 
 async function onSubmit() {
+  if (busy.value) return;
+  if (ts.enabled.value && !ts.token.value) {
+    errToast("请先完成人机验证");
+    return;
+  }
   busy.value = true;
   try {
-    const tsToken = window.turnstile?.getResponse?.() || "";
     await api.post("/auth/login", {
-      email: email.value, password: password.value, turnstileToken: tsToken,
+      email: email.value, password: password.value, turnstileToken: ts.token.value,
     });
     okToast("登录成功");
     await loadSession();
     navigate("/");
   } catch (e) {
     errToast(e.message);
-    if (window.turnstile) window.turnstile.reset();
+    // 单 token 用完即弃。无论失败原因都把 widget reset 一次,让下次提交是干净的,
+    // 这样用户不会因为旧 token 已被服务端消费而再吃一次 400。
+    ts.reset();
   } finally {
     busy.value = false;
   }

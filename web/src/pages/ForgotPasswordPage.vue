@@ -19,10 +19,15 @@
           <label class="label">邮箱地址</label>
           <input v-model="email" type="email" required autofocus class="input" placeholder="you@example.com" />
         </div>
-        <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
+        <div v-if="ts.enabled.value" class="pt-1">
+          <div :ref="el => (ts.container.value = el)"></div>
+          <p v-if="ts.loaded.value && !ts.token.value" class="text-xs text-fg-mute mt-2">
+            请先完成上方人机验证
+          </p>
+        </div>
         <div class="pt-2">
-          <button :disabled="busy" class="btn btn-primary w-full">
-            {{ busy ? "正在发送…" : "发送重置码" }}
+          <button :disabled="busy || !ts.canSubmit.value" class="btn btn-primary w-full">
+            {{ sendLabel }}
           </button>
         </div>
       </form>
@@ -56,50 +61,42 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed } from "vue";
 import { api } from "../api.js";
 import { navigate } from "../router.js";
 import { okToast, errToast } from "../toast.js";
 import PasswordInput from "../components/PasswordInput.vue";
+import { useTurnstile } from "../composables/useTurnstile.js";
 
 const step = ref(1);
 const email = ref("");
 const code = ref("");
 const newPassword = ref("");
 const busy = ref(false);
-const turnstileSiteKey = ref("");
+const ts = useTurnstile();
 
-const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-
-onMounted(async () => {
-  try {
-    const cfg = await api.get("/auth/turnstile-config");
-    if (cfg.enabled && cfg.siteKey) {
-      turnstileSiteKey.value = cfg.siteKey;
-      if (!document.querySelector(`script[src="${TURNSTILE_SCRIPT}"]`)) {
-        const s = document.createElement("script");
-        s.src = TURNSTILE_SCRIPT;
-        s.async = true; s.defer = true;
-        document.head.appendChild(s);
-      } else if (window.turnstile) {
-        setTimeout(() => window.turnstile.render?.(".cf-turnstile"), 0);
-      }
-    }
-  } catch {}
+const sendLabel = computed(() => {
+  if (busy.value) return "正在发送…";
+  if (ts.enabled.value && !ts.token.value) return "请完成人机验证";
+  return "发送重置码";
 });
 
 async function onSend() {
+  if (busy.value) return;
+  if (ts.enabled.value && !ts.token.value) {
+    errToast("请先完成人机验证");
+    return;
+  }
   busy.value = true;
   try {
-    const tsToken = window.turnstile?.getResponse?.() || "";
     await api.post("/auth/forgot-password", {
-      email: email.value, turnstileToken: tsToken,
+      email: email.value, turnstileToken: ts.token.value,
     });
     step.value = 2;
     okToast("若该邮箱已注册,验证码已发送");
   } catch (e) {
     errToast(e.message);
-    if (window.turnstile) window.turnstile.reset();
+    ts.reset();
   } finally {
     busy.value = false;
   }

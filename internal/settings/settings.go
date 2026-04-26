@@ -98,7 +98,11 @@ var Managed = []ManagedKey{
 	{Key: "TURNSTILE_SECRET_KEY", Category: "security", Sensitive: true, Default: "",
 		Description: "Cloudflare Turnstile Secret Key(后端使用)"},
 	{Key: "TURNSTILE_SEND_REMOTEIP", Category: "security", Default: "0",
-		Description: "Turnstile 校验时是否带上 remoteip。家宽/CGNAT/IP 漂移环境下建议关闭(0),否则 Cloudflare 边缘看到的 IP 与服务端看到的可能不一致而拒绝。"},
+		Description: "Turnstile 校验时是否带 remoteip(1=带,0=不带)。" +
+			"反向代理后/家宽 NAT/CGNAT/IP 漂移环境下务必填 0:用户拿到 token 时" +
+			"Cloudflare 看到的边缘 IP,与服务端拿 token 校验时看到的源 IP 不一致," +
+			"siteverify 会直接返回失败,表现为登录按钮一直要点很多次才成功。" +
+			"只有自建源站直连用户、且不存在 IP 漂移时才建议设 1。"},
 }
 
 // Store is the handle handlers depend on. It hides the DB and the cache.

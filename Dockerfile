@@ -102,7 +102,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ── Stage 3: runtime ───────────────────────────────────────────────────────
 FROM alpine:3.20 AS runtime
 
-RUN apk add --no-cache ca-certificates tzdata wget \
+# 修改 (2026-04):
+#   - 加 sqlite (cli) + busybox-extras 让管理员 docker exec 进容器后能直接
+#     `sqlite3 /app/data/app.db` 读写。
+#   - 默认运行用户仍是 nonroot(65532),最小权限。需要 root 调试时执行
+#     `docker exec -u 0 qishu sh` —— Alpine 的 root 一直存在,不需要额外创
+#     建。compose 文件里 `read_only: true`,但 /app/data 是 named volume,
+#     是可写的;sqlite3 写 wal/shm 落在 /app/data 内不受 read_only 影响。
+#   - 把 TZ 默认设为 Asia/Shanghai,Go 程序里再用 time.LoadLocation 显式
+#     用上海时区(更稳),双保险。
+RUN apk add --no-cache \
+        ca-certificates tzdata wget \
+        sqlite \
+        busybox-extras \
     && addgroup -g 65532 -S nonroot \
     && adduser -u 65532 -S nonroot -G nonroot
 
@@ -110,7 +122,10 @@ COPY --from=api-builder /out/qishu /usr/local/bin/qishu
 
 # 数据目录:借鉴 chenyme/grok2api 的 /app/data 约定。容器在这里持有 SQLite
 # 数据库与所有持久状态;docker compose 用命名卷 qishu_data 挂到这里。
-RUN mkdir -p /app/data && chown -R nonroot:nonroot /app/data
+# 显式 chmod 775 让 root(docker exec -u 0)也能写,nonroot 也能写。
+RUN mkdir -p /app/data \
+    && chown -R nonroot:nonroot /app/data \
+    && chmod -R 775 /app/data
 VOLUME ["/app/data"]
 
 USER nonroot:nonroot
@@ -118,6 +133,7 @@ USER nonroot:nonroot
 ENV LISTEN_ADDR=0.0.0.0:8080 \
     APP_ENV=production \
     DATA_DIR=/app/data \
+    TZ=Asia/Shanghai \
     GOMEMLIMIT=48MiB \
     GOGC=20 \
     GOMAXPROCS=2 \

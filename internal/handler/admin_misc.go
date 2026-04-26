@@ -189,6 +189,9 @@ type AdminRetentionHandler struct {
 	LoginHistory *repository.LoginHistoryRepo
 	ActivityLog  *repository.ActivityLogRepo
 	Pending      *repository.PendingRepo
+	OAuthCodes   *repository.OAuthCodeRepo
+	OAuthTokens  *repository.OAuthTokenRepo
+	Favicons     *repository.FaviconRepo
 	Settings     *settings.Store
 	Audit        *repository.ActivityLogRepo
 }
@@ -197,6 +200,16 @@ func (h *AdminRetentionHandler) Register(g *echo.Group) {
 	g.POST("/:table/prune", h.prune)
 }
 
+// prune 支持的 table 值:
+//
+//	vcodes               过期验证码
+//	pending              过期待注册
+//	login-history        登录历史(按 LOGIN_HISTORY_RETENTION_DAYS)
+//	activity-log         活动日志(按 ACTIVITY_LOG_RETENTION_DAYS)
+//	oauth-codes          过期 OAuth 授权码
+//	oauth-tokens-expired 过期 OAuth access/refresh token
+//	favicons             全部图标缓存(没有"过期"概念,直接清空,需要时会
+//	                     按需重新抓)
 func (h *AdminRetentionHandler) prune(c echo.Context) error {
 	table := c.Param("table")
 	var n int64
@@ -220,6 +233,18 @@ func (h *AdminRetentionHandler) prune(c echo.Context) error {
 		}
 		cutoff := time.Now().Add(-time.Duration(retain) * 24 * time.Hour)
 		n, err = h.ActivityLog.PruneOlderThan(cutoff)
+	case "oauth-codes":
+		if h.OAuthCodes != nil {
+			n, err = h.OAuthCodes.PruneExpired()
+		}
+	case "oauth-tokens-expired":
+		if h.OAuthTokens != nil {
+			n, err = h.OAuthTokens.PruneExpired()
+		}
+	case "favicons":
+		if h.Favicons != nil {
+			n, err = h.Favicons.DeleteAll()
+		}
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, "未知的表:"+table)
 	}

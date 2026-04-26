@@ -87,7 +87,9 @@ const hasSidebar = computed(() =>
 
 const mainClass = computed(() => {
   if (route.path === "/admin" || route.path === "/account") {
-    // 侧边栏页:main 占满剩余空间,内部自己滚动
+    // 侧边栏页:main 占满剩余空间,内部自己滚动。padding/最大宽度由
+    // AdminPage / AccountPage 各自的 .admin-outer / .account-outer 控制,
+    // 这样它们的左右边界与顶栏 mx-auto max-w-7xl 完全一致。
     return "flex-1 w-full app-main-with-sidebar";
   }
   if (route.path.startsWith("/login") || route.path.startsWith("/register") || route.path.startsWith("/forgot"))

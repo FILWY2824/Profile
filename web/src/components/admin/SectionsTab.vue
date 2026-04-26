@@ -1,12 +1,14 @@
 <template>
-  <div class="space-y-6">
-    <header class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <h1 class="h-page">板块管理<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 个板块</p>
-      </div>
+  <div class="space-y-5">
+    <header class="admin-tab-head">
+      <h1 class="h-page">板块<span class="text-teal-300">.</span></h1>
       <button @click="openCreate" class="btn btn-primary">+ 新建板块</button>
     </header>
+
+    <div class="admin-toolbar">
+      <input v-model="search" placeholder="搜索名称 / slug / 描述…" class="input admin-search" />
+      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+    </div>
 
     <div class="surface overflow-hidden">
       <table class="w-full text-sm">
@@ -30,13 +32,15 @@
               <button @click="onDelete(s)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
             </td>
           </tr>
-          <tr v-if="items.length === 0">
-            <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无板块</td>
+          <tr v-if="filteredItems.length === 0">
+            <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">
+              {{ items.length === 0 ? '暂无板块' : '没有匹配的板块' }}
+            </td>
           </tr>
         </tbody>
       </table>
-      <div v-if="items.length > 0" class="px-4 py-2">
-        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      <div v-if="filteredItems.length > 0" class="px-4 py-2">
+        <Pagination :total="filteredItems.length" v-model:current-page="page" :page-size="10" />
       </div>
     </div>
 
@@ -56,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import { useConfirm } from "../../confirm.js";
@@ -68,12 +72,24 @@ const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
 const page = ref(1);
+const search = ref("");
 const PAGE_SIZE = 10;
+
+const filteredItems = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return items.value;
+  return items.value.filter(s =>
+    (s.name || "").toLowerCase().includes(q) ||
+    (s.slug || "").toLowerCase().includes(q) ||
+    (s.description || "").toLowerCase().includes(q));
+});
 
 const pagedItems = computed(() => {
   const start = (page.value - 1) * PAGE_SIZE;
-  return items.value.slice(start, start + PAGE_SIZE);
+  return filteredItems.value.slice(start, start + PAGE_SIZE);
 });
+
+watch(search, () => { page.value = 1; });
 
 async function load() {
   try {
@@ -115,6 +131,30 @@ onMounted(load);
 </script>
 
 <style scoped>
+.admin-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.admin-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
 .admin-thead {
   border-bottom: 1px solid rgba(15, 36, 25, 0.10);
   background-color: rgba(255, 255, 255, 0.55);

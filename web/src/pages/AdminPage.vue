@@ -1,65 +1,77 @@
 <template>
-  <!-- 与 AccountPage 一致的两栏布局:左固定侧栏 + 右独立滚动主区。
-       侧栏紧贴顶栏左缘对齐(由父 .app-shell.has-sidebar 控制全局滚动
-       行为,这里 admin-shell 用 height:100% 占满父级 main 区域)。 -->
-  <div class="admin-shell">
-    <aside class="admin-sidebar hidden md:flex flex-col">
-      <div class="admin-brand">
-        <div class="admin-brand-name">管理后台</div>
-        <div class="admin-brand-sub">ADMIN PANEL</div>
-      </div>
-      <nav class="flex-1 overflow-y-auto p-3 space-y-5">
-        <div>
-          <div class="admin-group-label">概览</div>
-          <button v-for="t in topTabs" :key="t.id"
-                  @click="active = t.id"
-                  :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
-            {{ t.label }}
-          </button>
+  <!-- 与顶栏共用相同的 max-w-7xl + lg:px-8 居中容器,所以侧边栏左缘和主内容
+       右缘都和顶栏的内容边界对齐(顶栏 NavBar.vue 用的是 `mx-auto max-w-7xl`
+       + `px-4 sm:px-6 lg:px-8`)。.admin-shell 内部再分两栏。 -->
+  <div class="admin-outer">
+    <div class="admin-shell">
+      <aside class="admin-sidebar hidden md:flex flex-col">
+        <div class="admin-brand">
+          <div class="admin-brand-name">管理后台</div>
+          <div class="admin-brand-sub">ADMIN PANEL</div>
         </div>
-        <div>
-          <div class="admin-group-label">内容</div>
-          <button v-for="t in contentTabs" :key="t.id"
-                  @click="active = t.id"
-                  :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
-            {{ t.label }}
-          </button>
-        </div>
-        <div>
-          <div class="admin-group-label">系统</div>
-          <button v-for="t in systemTabs" :key="t.id"
-                  @click="active = t.id"
-                  :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
-            {{ t.label }}
-          </button>
-        </div>
-      </nav>
-      <div class="admin-foot">{{ today }}</div>
-    </aside>
+        <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+          <div class="admin-group">
+            <div class="admin-group-label">
+              <span>概览</span>
+              <span class="admin-group-line"></span>
+            </div>
+            <button v-for="t in topTabs" :key="t.id"
+                    @click="active = t.id"
+                    :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
+              {{ t.label }}
+            </button>
+          </div>
+          <div class="admin-group">
+            <div class="admin-group-label">
+              <span>内容</span>
+              <span class="admin-group-line"></span>
+            </div>
+            <button v-for="t in contentTabs" :key="t.id"
+                    @click="active = t.id"
+                    :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
+              {{ t.label }}
+            </button>
+          </div>
+          <div class="admin-group">
+            <div class="admin-group-label">
+              <span>系统</span>
+              <span class="admin-group-line"></span>
+            </div>
+            <button v-for="t in systemTabs" :key="t.id"
+                    @click="active = t.id"
+                    :class="['admin-side-item', active === t.id && 'admin-side-item-active']">
+              {{ t.label }}
+            </button>
+          </div>
+        </nav>
+        <div class="admin-foot">{{ today }}</div>
+      </aside>
 
-    <!-- 移动端 tab -->
-    <div class="admin-mobile-tabs md:hidden">
-      <button v-for="t in [...topTabs, ...contentTabs, ...systemTabs]" :key="t.id"
-              @click="active = t.id"
-              :class="[
-                'inline-flex items-center px-3 py-1.5 rounded-md text-xs mr-1 transition-colors whitespace-nowrap',
-                active === t.id ? 'admin-mobile-tab-active' : 'text-fg-dim'
-              ]">
-        {{ t.label }}
-      </button>
+      <!-- 移动端 tab -->
+      <div class="admin-mobile-tabs md:hidden">
+        <button v-for="t in [...topTabs, ...contentTabs, ...systemTabs]" :key="t.id"
+                @click="active = t.id"
+                :class="[
+                  'inline-flex items-center px-3 py-1.5 rounded-md text-xs mr-1 transition-colors whitespace-nowrap',
+                  active === t.id ? 'admin-mobile-tab-active' : 'text-fg-dim'
+                ]">
+          {{ t.label }}
+        </button>
+      </div>
+
+      <!-- 主内容 — 独立滚动 -->
+      <main class="admin-main">
+        <div class="admin-main-inner">
+          <component :is="activeView" />
+        </div>
+      </main>
     </div>
-
-    <!-- 主内容 — 独立滚动 -->
-    <main class="admin-main">
-      <div class="admin-main-inner">
-        <component :is="activeView" />
-      </div>
-    </main>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from "vue";
+import { formatDate } from "../format.js";
 
 import DashboardTab from "../components/admin/DashboardTab.vue";
 import UsersTab from "../components/admin/UsersTab.vue";
@@ -96,35 +108,58 @@ const map = {
 };
 const activeView = computed(() => map[active.value]);
 
-const today = computed(() => {
-  const d = new Date();
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-});
+// 用统一的 Asia/Shanghai 时区显示。原来的 new Date().getMonth() 等是浏览器
+// 本地时区,用户在国外浏览时可能看到错位。
+const today = computed(() => formatDate());
 </script>
 
 <style scoped>
+/* 外层 — 与顶栏的 mx-auto max-w-7xl px-* 完全对齐。
+   App.vue 在 has-sidebar 模式下让 main 占满高度 / 自身 overflow:hidden,
+   所以这里 admin-outer 也要 height:100% 并 overflow:hidden,内层
+   admin-shell 再分两栏。 */
+.admin-outer {
+  height: 100%;
+  width: 100%;
+  margin: 0 auto;
+  max-width: 80rem;       /* tailwind max-w-7xl */
+  padding: 0 1rem;        /* tailwind px-4 */
+  overflow: hidden;
+}
+@media (min-width: 640px) {
+  .admin-outer { padding-left: 1.5rem; padding-right: 1.5rem; } /* sm:px-6 */
+}
+@media (min-width: 1024px) {
+  .admin-outer { padding-left: 2rem; padding-right: 2rem; }     /* lg:px-8 */
+}
+
 .admin-shell {
   display: flex;
   height: 100%;
   width: 100%;
 }
 
-/* 侧边栏 — 固定宽度,自身可滚动(避免菜单很多时溢出) */
+/* 侧边栏 — 玻璃面板,左缘对齐顶栏 brand 起点。 */
 .admin-sidebar {
-  width: 15rem;
+  width: 14.5rem;
   flex-shrink: 0;
   background-color: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border-right: 1px solid rgba(15, 36, 25, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 18px;
   height: 100%;
   display: flex;
   flex-direction: column;
+  margin: 8px 0 8px 0;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 8px 24px -12px rgba(15, 36, 25, 0.10);
 }
 
 .admin-brand {
-  padding: 22px 24px 18px;
-  border-bottom: 1px solid rgba(15, 36, 25, 0.08);
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
 }
 .admin-brand-name {
   font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
@@ -142,23 +177,43 @@ const today = computed(() => {
   letter-spacing: 0.08em;
 }
 
+/* 分组(概览 / 内容 / 系统)— 必须明显是分组标题而不是按钮。
+   做法:
+     - 缩小到 10px,加 letter-spacing 和 uppercase
+     - 后跟一根细横线,延伸到分组项的右缘 —— 这是排版里"上面是 label,下面才是
+       项目"最朴素也最有效的视觉分隔。
+     - 不允许 hover、不可点击,cursor 也不变。 */
+.admin-group { display: flex; flex-direction: column; gap: 1px; }
 .admin-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  margin-bottom: 8px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--fg-mute);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0 12px;
-  margin-bottom: 6px;
+  letter-spacing: 0.10em;
+  user-select: none;
+  cursor: default;
+}
+.admin-group-label > span:first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.admin-group-line {
+  flex: 1;
+  height: 1px;
+  background-color: rgba(15, 36, 25, 0.10);
 }
 
-/* 侧边栏菜单项 — 去掉 emoji 图标,统一 12px 内边距 */
+/* 侧边栏菜单项 */
 .admin-side-item {
   display: block;
   width: 100%;
   text-align: left;
   padding: 8px 12px;
-  margin-bottom: 1px;
   border-radius: 9px;
   font-size: 13px;
   font-weight: 500;
@@ -184,8 +239,8 @@ const today = computed(() => {
 }
 
 .admin-foot {
-  border-top: 1px solid rgba(15, 36, 25, 0.08);
-  padding: 12px 24px;
+  border-top: 1px solid rgba(15, 36, 25, 0.06);
+  padding: 12px 22px;
   font-size: 11px;
   color: var(--fg-mute);
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -199,13 +254,10 @@ const today = computed(() => {
   overflow-y: auto;
 }
 .admin-main-inner {
-  max-width: 80rem;
-  padding: 32px;
+  padding: 24px 0 24px 24px;
 }
 @media (max-width: 768px) {
-  .admin-main-inner {
-    padding: 16px;
-  }
+  .admin-main-inner { padding: 12px; }
 }
 
 /* 移动端水平 tab — 仅在窄屏出现 */
@@ -213,7 +265,7 @@ const today = computed(() => {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: 12px 12px 0;
+  margin: 12px 0 0;
   border-radius: 14px;
   background-color: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(16px) saturate(160%);
@@ -233,12 +285,9 @@ const today = computed(() => {
 
 /* 窄屏时 admin-shell 改成纵向 */
 @media (max-width: 768px) {
-  .admin-shell {
-    flex-direction: column;
-    height: auto;
-  }
-  .admin-main {
-    height: auto;
-  }
+  .admin-outer { overflow: visible; height: auto; }
+  .admin-shell { flex-direction: column; height: auto; }
+  .admin-main { height: auto; }
+  .admin-sidebar { display: none; }
 }
 </style>

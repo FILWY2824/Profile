@@ -225,6 +225,8 @@ func run() error {
 	(&handler.AdminRetentionHandler{
 		VCodes: vcodes, Pending: pending,
 		LoginHistory: loginHist, ActivityLog: activityLog,
+		OAuthCodes: oauthCodes, OAuthTokens: oauthTokens,
+		Favicons: favicons,
 		Settings: store, Audit: activityLog,
 	}).Register(adminG.Group("/retention"))
 

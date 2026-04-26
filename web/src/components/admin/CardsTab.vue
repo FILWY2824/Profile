@@ -1,12 +1,14 @@
 <template>
-  <div class="space-y-6">
-    <header class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <h1 class="h-page">卡片管理<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 张卡片</p>
-      </div>
+  <div class="space-y-5">
+    <header class="admin-tab-head">
+      <h1 class="h-page">卡片<span class="text-teal-300">.</span></h1>
       <button @click="openCreate" class="btn btn-primary">+ 新建卡片</button>
     </header>
+
+    <div class="admin-toolbar">
+      <input v-model="search" placeholder="搜索标题 / URL / 板块…" class="input admin-search" />
+      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 张</span>
+    </div>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
@@ -25,9 +27,6 @@
             <tr v-for="c in pagedItems" :key="c.id" class="admin-row">
               <td class="px-4 py-3 font-semibold text-fg">{{ c.title }}</td>
               <td class="px-4 py-3">
-                <!-- 只在管理员视图显示 URL,但不再做"点击跳转"
-                     这能避免在表格里用 anchor 让浏览器历史记录里出现 URL。
-                     管理员要测试卡片可以用主页或编辑表单。 -->
                 <span class="font-mono text-xs text-fg-dim truncate inline-block max-w-[260px] align-middle" :title="c.url">{{ c.url }}</span>
               </td>
               <td class="px-4 py-3 text-xs text-fg-dim">{{ sectionName(c.sectionId) }}</td>
@@ -38,14 +37,16 @@
                 <button @click="onDelete(c)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
-            <tr v-if="items.length === 0">
-              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">暂无卡片</td>
+            <tr v-if="filteredItems.length === 0">
+              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">
+                {{ items.length === 0 ? '暂无卡片' : '没有匹配的卡片' }}
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div v-if="items.length > 0" class="px-4 py-2">
-        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      <div v-if="filteredItems.length > 0" class="px-4 py-2">
+        <Pagination :total="filteredItems.length" v-model:current-page="page" :page-size="10" />
       </div>
     </div>
 
@@ -83,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import { useConfirm } from "../../confirm.js";
@@ -97,14 +98,28 @@ const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
 const page = ref(1);
+const search = ref("");
 const PAGE_SIZE = 10;
+
+const sectionName = (id) => sections.value.find((s) => s.id === id)?.name || (id ? "?" : "—");
+
+const filteredItems = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return items.value;
+  return items.value.filter(c =>
+    (c.title || "").toLowerCase().includes(q) ||
+    (c.url || "").toLowerCase().includes(q) ||
+    (c.description || "").toLowerCase().includes(q) ||
+    sectionName(c.sectionId).toLowerCase().includes(q));
+});
 
 const pagedItems = computed(() => {
   const start = (page.value - 1) * PAGE_SIZE;
-  return items.value.slice(start, start + PAGE_SIZE);
+  return filteredItems.value.slice(start, start + PAGE_SIZE);
 });
 
-const sectionName = (id) => sections.value.find((s) => s.id === id)?.name || (id ? "?" : "—");
+// 搜索条件变化时回到第 1 页,避免停留在不存在的页码上
+watch(search, () => { page.value = 1; });
 
 async function load() {
   try {
@@ -148,6 +163,30 @@ onMounted(load);
 </script>
 
 <style scoped>
+.admin-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.admin-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
 .admin-thead {
   border-bottom: 1px solid rgba(15, 36, 25, 0.10);
   background-color: rgba(255, 255, 255, 0.55);

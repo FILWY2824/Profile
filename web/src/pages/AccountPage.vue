@@ -1,175 +1,176 @@
 <template>
-  <!-- 整个页面是固定高度的两栏布局:左固定侧栏 + 右独立滚动主区。
-       left 与外层顶栏左缘对齐(顶栏 padding 4px+12px 与 brand-link padding 4+6 比较;
-       这里 padding 用 px-4 sm:px-6 lg:px-8,与顶栏外侧一致以视觉对齐)。 -->
-  <div class="account-shell">
-    <aside class="acc-sidebar">
-      <!-- 移动端横向 tabs -->
-      <nav class="lg:hidden flex gap-1 overflow-x-auto pb-2 px-4 border-b border-line acc-mobile-tabs">
-        <button v-for="t in tabs" :key="t.id"
-                @click="active = t.id"
-                :class="[
-                  'flex-shrink-0 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors',
-                  active === t.id ? 'tab-mobile-active' : 'text-fg-dim'
-                ]">
-          {{ t.label }}
-        </button>
-      </nav>
-      <!-- 桌面端竖向(无 emoji 图标) -->
-      <div class="hidden lg:block acc-side-nav">
-        <div class="acc-side-title">账户中心</div>
-        <button v-for="t in tabs" :key="t.id"
-                @click="active = t.id"
-                :class="['acc-side-item', active === t.id && 'acc-side-item-active']">
-          {{ t.label }}
-        </button>
-      </div>
-    </aside>
-
-    <main class="acc-main">
-      <header class="acc-page-head">
-        <h1 class="h-page">{{ activeTab.label }}<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim mt-1.5 text-sm">{{ activeTab.subtitle }}</p>
-      </header>
-
-      <!-- Profile -->
-      <section v-if="active === 'profile'" class="surface p-6 sm:p-8 max-w-2xl">
-        <div v-if="profile" class="space-y-5">
-          <div class="flex items-center gap-4 pb-5 border-b border-line">
-            <span class="profile-avatar">{{ initial }}</span>
-            <div class="flex-1 min-w-0">
-              <div class="font-mono text-sm text-fg truncate">{{ profile.email }}</div>
-              <div class="text-xs text-fg-mute mt-1">{{ roleLabel }}</div>
-            </div>
-          </div>
-          <div>
-            <label class="label">显示名</label>
-            <input v-model="profile.name" maxlength="60" class="input" />
-          </div>
-          <div>
-            <label class="label">个人介绍</label>
-            <textarea v-model="profile.bio" rows="3" maxlength="500" class="input"></textarea>
-          </div>
-          <div class="pt-2">
-            <button @click="saveProfile" :disabled="busy" class="btn btn-primary">
-              {{ busy ? "保存中…" : "保存修改" }}
-            </button>
-          </div>
+  <!-- 与顶栏同宽的居中容器,保证侧栏左缘与主区右缘都跟顶栏对齐。 -->
+  <div class="account-outer">
+    <div class="account-shell">
+      <aside class="acc-sidebar">
+        <!-- 移动端横向 tabs -->
+        <nav class="lg:hidden flex gap-1 overflow-x-auto pb-2 px-4 border-b border-line acc-mobile-tabs">
+          <button v-for="t in tabs" :key="t.id"
+                  @click="active = t.id"
+                  :class="[
+                    'flex-shrink-0 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors',
+                    active === t.id ? 'tab-mobile-active' : 'text-fg-dim'
+                  ]">
+            {{ t.label }}
+          </button>
+        </nav>
+        <!-- 桌面端竖向 -->
+        <div class="hidden lg:block acc-side-nav">
+          <div class="acc-side-title">账户中心</div>
+          <button v-for="t in tabs" :key="t.id"
+                  @click="active = t.id"
+                  :class="['acc-side-item', active === t.id && 'acc-side-item-active']">
+            {{ t.label }}
+          </button>
         </div>
-      </section>
+      </aside>
 
-      <!-- Password -->
-      <section v-if="active === 'password'" class="surface p-6 sm:p-8 max-w-2xl">
-        <div class="space-y-5">
-          <div>
-            <label class="label">原密码</label>
-            <PasswordInput v-model="oldPw" autocomplete="current-password" placeholder="••••••••" />
-          </div>
-          <div>
-            <label class="label">新密码 (至少 8 字符)</label>
-            <PasswordInput v-model="newPw" :minlength="8" autocomplete="new-password" placeholder="••••••••" />
-          </div>
-          <div class="flex gap-3 items-end">
-            <div class="flex-1">
-              <label class="label">邮箱验证码</label>
-              <input v-model="pwCode" maxlength="6" class="input input-mono text-center tracking-[0.4em]" placeholder="000000" />
-            </div>
-            <button @click="sendPwCode" :disabled="busy" class="btn btn-secondary whitespace-nowrap">
-              发送验证码
-            </button>
-          </div>
-          <div class="pt-2">
-            <button @click="changePassword" :disabled="busy" class="btn btn-primary">
-              {{ busy ? "提交中…" : "确认修改" }}
-            </button>
-          </div>
-        </div>
-      </section>
+      <main class="acc-main">
+        <header class="acc-page-head">
+          <h1 class="h-page">{{ activeTab.label }}<span class="text-teal-300">.</span></h1>
+          <p class="text-fg-dim mt-1.5 text-sm">{{ activeTab.subtitle }}</p>
+        </header>
 
-      <!-- Logins -->
-      <section v-if="active === 'logins'" class="surface p-6 sm:p-8">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="h-section">登录历史</h2>
-          <span class="text-xs text-fg-mute font-mono">{{ loginsTotal }} 条</span>
-        </div>
-        <div v-if="logins.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无记录</div>
-        <div v-else class="overflow-x-auto -mx-2">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-line">
-                <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">时间</th>
-                <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">IP</th>
-                <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">User-Agent</th>
-                <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">结果</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="l in logins" :key="l.id" class="data-row">
-                <td class="py-2.5 px-2 font-mono text-xs text-fg-dim whitespace-nowrap">{{ formatTime(l.timestamp) }}</td>
-                <td class="py-2.5 px-2 font-mono text-xs text-fg whitespace-nowrap">{{ l.ip }}</td>
-                <td class="py-2.5 px-2 text-xs text-fg-dim truncate max-w-xs">{{ l.userAgent }}</td>
-                <td class="py-2.5 px-2 whitespace-nowrap">
-                  <span :class="l.success ? 'badge-emerald' : 'badge-red'">
-                    {{ l.success ? (l.reason || '成功') : (l.reason || '失败') }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <Pagination
-          :total="loginsTotal"
-          v-model:current-page="loginsPage"
-          :page-size="10"
-          @page-change="loadLogins"
-        />
-      </section>
-
-      <!-- OAuth Grants -->
-      <section v-if="active === 'apps'" class="surface p-6 sm:p-8">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="h-section">已授权应用</h2>
-          <span class="text-xs text-fg-mute font-mono">{{ grants.length }} 项</span>
-        </div>
-        <div v-if="grants.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
-        <ul v-else class="space-y-3">
-          <li v-for="g in grants" :key="g.id" class="grant-item">
-            <div class="min-w-0 flex-1">
-              <div class="h-sub truncate">{{ g.clientName }}</div>
-              <div class="text-xs text-fg-mute mt-1 truncate font-mono">
-                {{ (g.scopes || []).join(' ') || '—' }} · 上次使用 {{ formatTime(g.lastUsedAt) }}
+        <!-- Profile -->
+        <section v-if="active === 'profile'" class="surface p-6 sm:p-8 max-w-2xl">
+          <div v-if="profile" class="space-y-5">
+            <div class="flex items-center gap-4 pb-5 border-b border-line">
+              <span class="profile-avatar">{{ initial }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="font-mono text-sm text-fg truncate">{{ profile.email }}</div>
+                <div class="text-xs text-fg-mute mt-1">{{ roleLabel }}</div>
               </div>
             </div>
-            <button @click="revokeGrant(g)" class="btn btn-danger btn-sm whitespace-nowrap">
-              撤销
-            </button>
-          </li>
-        </ul>
-      </section>
+            <div>
+              <label class="label">显示名</label>
+              <input v-model="profile.name" maxlength="60" class="input" />
+            </div>
+            <div>
+              <label class="label">个人介绍</label>
+              <textarea v-model="profile.bio" rows="3" maxlength="500" class="input"></textarea>
+            </div>
+            <div class="pt-2">
+              <button @click="saveProfile" :disabled="busy" class="btn btn-primary">
+                {{ busy ? "保存中…" : "保存修改" }}
+              </button>
+            </div>
+          </div>
+        </section>
 
-      <!-- Activity -->
-      <section v-if="active === 'activity'" class="surface p-6 sm:p-8">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="h-section">活动日志</h2>
-          <span class="text-xs text-fg-mute font-mono">{{ activityTotal }} 条</span>
-        </div>
-        <div v-if="activity.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
-        <ul v-else class="space-y-1">
-          <li v-for="a in activity" :key="a.id"
-              class="flex items-baseline gap-4 py-2.5 border-b border-line last:border-0 text-sm">
-            <span class="font-mono text-xs text-fg-mute w-32 flex-shrink-0">{{ formatTime(a.timestamp) }}</span>
-            <span class="text-teal-300">·</span>
-            <span class="text-fg leading-relaxed">{{ a.detail || a.action }}</span>
-          </li>
-        </ul>
-        <Pagination
-          :total="activityTotal"
-          v-model:current-page="activityPage"
-          :page-size="10"
-          @page-change="loadActivity"
-        />
-      </section>
-    </main>
+        <!-- Password -->
+        <section v-if="active === 'password'" class="surface p-6 sm:p-8 max-w-2xl">
+          <div class="space-y-5">
+            <div>
+              <label class="label">原密码</label>
+              <PasswordInput v-model="oldPw" autocomplete="current-password" placeholder="••••••••" />
+            </div>
+            <div>
+              <label class="label">新密码 (至少 8 字符)</label>
+              <PasswordInput v-model="newPw" :minlength="8" autocomplete="new-password" placeholder="••••••••" />
+            </div>
+            <div class="flex gap-3 items-end">
+              <div class="flex-1">
+                <label class="label">邮箱验证码</label>
+                <input v-model="pwCode" maxlength="6" class="input input-mono text-center tracking-[0.4em]" placeholder="000000" />
+              </div>
+              <button @click="sendPwCode" :disabled="busy" class="btn btn-secondary whitespace-nowrap">
+                发送验证码
+              </button>
+            </div>
+            <div class="pt-2">
+              <button @click="changePassword" :disabled="busy" class="btn btn-primary">
+                {{ busy ? "提交中…" : "确认修改" }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logins — 用 toolbar 行替代独立 h2,避免与页头 h1"登录历史" 重复 -->
+        <section v-if="active === 'logins'" class="surface p-6 sm:p-8">
+          <div class="acc-toolbar">
+            <input v-model="loginsSearch" placeholder="搜索 IP / User-Agent / 结果…" class="input acc-search" />
+            <span class="acc-count">共 {{ filteredLogins.length }} / {{ loginsTotal }} 条</span>
+          </div>
+          <div v-if="logins.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无记录</div>
+          <div v-else class="overflow-x-auto -mx-2">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-line">
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">时间</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">IP</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">User-Agent</th>
+                  <th class="text-xs text-fg-mute font-medium py-2.5 px-2 text-left">结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="l in filteredLogins" :key="l.id" class="data-row">
+                  <td class="py-2.5 px-2 font-mono text-xs text-fg-dim whitespace-nowrap">{{ formatTime(l.timestamp) }}</td>
+                  <td class="py-2.5 px-2 font-mono text-xs text-fg whitespace-nowrap">{{ l.ip }}</td>
+                  <td class="py-2.5 px-2 text-xs text-fg-dim truncate max-w-xs">{{ l.userAgent }}</td>
+                  <td class="py-2.5 px-2 whitespace-nowrap">
+                    <span :class="l.success ? 'badge-emerald' : 'badge-red'">
+                      {{ l.success ? (l.reason || '成功') : (l.reason || '失败') }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            :total="loginsTotal"
+            v-model:current-page="loginsPage"
+            :page-size="10"
+            @page-change="loadLogins"
+          />
+        </section>
+
+        <!-- OAuth Grants — 不再单独写 "已授权应用" 标题;页头 h1 已经显示 "授权应用",
+             重复写一遍属于冗余。这里只放一个 toolbar(搜索 + 计数)。 -->
+        <section v-if="active === 'apps'" class="surface p-6 sm:p-8">
+          <div class="acc-toolbar">
+            <input v-model="grantsSearch" placeholder="搜索应用名 / scope…" class="input acc-search" />
+            <span class="acc-count">共 {{ filteredGrants.length }} / {{ grants.length }} 项</span>
+          </div>
+          <div v-if="grants.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
+          <ul v-else class="space-y-3">
+            <li v-for="g in filteredGrants" :key="g.id" class="grant-item">
+              <div class="min-w-0 flex-1">
+                <div class="h-sub truncate">{{ g.clientName }}</div>
+                <div class="text-xs text-fg-mute mt-1 truncate font-mono">
+                  {{ (g.scopes || []).join(' ') || '—' }} · 上次使用 {{ formatTime(g.lastUsedAt) }}
+                </div>
+              </div>
+              <button @click="revokeGrant(g)" class="btn btn-danger btn-sm whitespace-nowrap">
+                撤销
+              </button>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Activity — 同样去掉重复的 "活动日志" 二级标题 -->
+        <section v-if="active === 'activity'" class="surface p-6 sm:p-8">
+          <div class="acc-toolbar">
+            <input v-model="activitySearch" placeholder="搜索 action / 详情…" class="input acc-search" />
+            <span class="acc-count">共 {{ filteredActivity.length }} / {{ activityTotal }} 条</span>
+          </div>
+          <div v-if="activity.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
+          <ul v-else class="space-y-1">
+            <li v-for="a in filteredActivity" :key="a.id"
+                class="flex items-baseline gap-4 py-2.5 border-b border-line last:border-0 text-sm">
+              <span class="font-mono text-xs text-fg-mute w-32 flex-shrink-0">{{ formatTime(a.timestamp) }}</span>
+              <span class="text-teal-300">·</span>
+              <span class="text-fg leading-relaxed">{{ a.detail || a.action }}</span>
+            </li>
+          </ul>
+          <Pagination
+            :total="activityTotal"
+            v-model:current-page="activityPage"
+            :page-size="10"
+            @page-change="loadActivity"
+          />
+        </section>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -199,15 +200,43 @@ const busy = ref(false);
 const logins = ref([]);
 const loginsTotal = ref(0);
 const loginsPage = ref(1);
+const loginsSearch = ref("");
 
 const grants = ref([]);
+const grantsSearch = ref("");
 
 const activity = ref([]);
 const activityTotal = ref(0);
 const activityPage = ref(1);
+const activitySearch = ref("");
 
 const initial = computed(() => (profile.value?.name || "?").charAt(0).toUpperCase());
 const roleLabel = computed(() => ({user:"普通用户", member:"成员", admin:"管理员"}[profile.value?.role] || profile.value?.role));
+
+// 客户端搜索 — 服务端已经做了分页,这里只在当前页内做模糊匹配。这是
+// "拿到了 10 条再筛"的轻量做法,不发起额外请求。
+const filteredLogins = computed(() => {
+  const q = loginsSearch.value.trim().toLowerCase();
+  if (!q) return logins.value;
+  return logins.value.filter(l =>
+    (l.ip || "").toLowerCase().includes(q) ||
+    (l.userAgent || "").toLowerCase().includes(q) ||
+    (l.reason || "").toLowerCase().includes(q));
+});
+const filteredGrants = computed(() => {
+  const q = grantsSearch.value.trim().toLowerCase();
+  if (!q) return grants.value;
+  return grants.value.filter(g =>
+    (g.clientName || "").toLowerCase().includes(q) ||
+    (g.scopes || []).join(" ").toLowerCase().includes(q));
+});
+const filteredActivity = computed(() => {
+  const q = activitySearch.value.trim().toLowerCase();
+  if (!q) return activity.value;
+  return activity.value.filter(a =>
+    (a.action || "").toLowerCase().includes(q) ||
+    (a.detail || "").toLowerCase().includes(q));
+});
 
 async function loadProfile() {
   try {
@@ -286,7 +315,24 @@ onMounted(loadProfile);
 </script>
 
 <style scoped>
-/* 两栏布局 — 占满 main 区域;主区独立滚动 */
+/* 外层 — 与顶栏 mx-auto max-w-7xl 对齐 */
+.account-outer {
+  height: 100%;
+  width: 100%;
+  margin: 0 auto;
+  max-width: 80rem;
+  padding: 0 1rem;
+}
+@media (min-width: 640px) {
+  .account-outer { padding-left: 1.5rem; padding-right: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .account-outer { padding-left: 2rem; padding-right: 2rem; }
+}
+@media (max-width: 1023px) {
+  .account-outer { height: auto; overflow: visible; }
+}
+
 .account-shell {
   display: grid;
   grid-template-columns: 14rem 1fr;
@@ -298,7 +344,6 @@ onMounted(loadProfile);
   .account-shell {
     grid-template-columns: 1fr;
     height: auto;
-    overflow: visible;
   }
 }
 
@@ -306,16 +351,12 @@ onMounted(loadProfile);
   position: sticky;
   top: 0;
   align-self: stretch;
-  padding: 24px 0 24px 16px;
+  padding: 24px 16px 24px 0;
   height: 100%;
   overflow: hidden;
 }
-@media (min-width: 1024px) {
-  .acc-sidebar {
-    /* 与顶栏左 padding 对齐 - lg:px-8 = 32px,但顶栏 nav-glass 内还有 16px 左缘,
-       这里使用 24px 让侧栏视觉与顶栏 brand-link 起点接近。 */
-    padding-left: 32px;
-  }
+@media (max-width: 1023px) {
+  .acc-sidebar { padding: 12px 0; height: auto; }
 }
 
 .acc-side-title {
@@ -364,16 +405,16 @@ onMounted(loadProfile);
   background: linear-gradient(135deg, rgba(167, 243, 208, 0.7), rgba(110, 231, 183, 0.55));
 }
 
-/* 主区 — 独立滚动 */
+/* 主区 — 独立滚动,padding 与顶栏宽度配合,右缘对齐 */
 .acc-main {
   height: 100%;
   overflow-y: auto;
-  padding: 32px 32px 32px 32px;
+  padding: 24px 0 24px 24px;
   min-width: 0;
 }
 @media (max-width: 1023px) {
   .acc-main {
-    padding: 16px;
+    padding: 16px 0;
     height: auto;
     overflow: visible;
   }
@@ -386,6 +427,27 @@ onMounted(loadProfile);
 .acc-mobile-tabs {
   margin-left: -16px;
   margin-right: -16px;
+}
+
+/* 顶部工具条:搜索框 + 计数。计数挪到搜索框附近,不再放在 h2 标题底下,
+   也不再有 "已授权应用 / 活动日志" 这种与 h-page 重复的二级标题。 */
+.acc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.acc-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.acc-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
 }
 
 .profile-avatar {

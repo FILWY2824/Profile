@@ -1,12 +1,14 @@
 <template>
-  <div class="space-y-6">
-    <header class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <h1 class="h-page">用户管理<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm mt-1.5">{{ total }} 个用户</p>
-      </div>
+  <div class="space-y-5">
+    <header class="admin-tab-head">
+      <h1 class="h-page">用户<span class="text-teal-300">.</span></h1>
       <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
     </header>
+
+    <div class="admin-toolbar">
+      <input v-model="search" placeholder="搜索邮箱 / 姓名…" class="input admin-search" />
+      <span class="admin-count">共 {{ filteredUsers.length }} / {{ total }} 个 (当前页)</span>
+    </div>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
@@ -22,7 +24,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id" class="admin-row">
+            <tr v-for="u in filteredUsers" :key="u.id" class="admin-row">
               <td class="px-4 py-3 font-mono text-xs text-fg">{{ u.email }}</td>
               <td class="px-4 py-3 text-fg">{{ u.name }}</td>
               <td class="px-4 py-3"><span :class="roleBadge(u.role)">{{ roleLabel(u.role) }}</span></td>
@@ -33,8 +35,10 @@
                 <button @click="onDelete(u)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
-            <tr v-if="users.length === 0">
-              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">暂无用户</td>
+            <tr v-if="filteredUsers.length === 0">
+              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">
+                {{ users.length === 0 ? '暂无用户' : '没有匹配当前搜索' }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -86,7 +90,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import { useConfirm } from "../../confirm.js";
@@ -101,6 +105,7 @@ const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
 const page = ref(1);
+const search = ref("");
 
 const roleLabel = (r) => ({admin:"管理员", member:"成员", user:"用户"}[r] || r);
 const statusLabel = (s) => ({active:"活跃", banned:"封禁", disabled:"禁用"}[s] || s);
@@ -115,6 +120,16 @@ function statusBadge(s) {
   if (s === "banned") return "badge-red";
   return "badge-slate";
 }
+
+// 用户列表是服务端分页(每页 10),搜索只在当前页内做。如果未来要全库搜索,
+// 可以加 q 参数到 /admin/users。这里先满足管理员"找个名字"的轻量需求。
+const filteredUsers = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return users.value;
+  return users.value.filter(u =>
+    (u.email || "").toLowerCase().includes(q) ||
+    (u.name || "").toLowerCase().includes(q));
+});
 
 async function load() {
   try {
@@ -174,6 +189,30 @@ onMounted(load);
 </script>
 
 <style scoped>
+.admin-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+}
+.admin-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
 .admin-thead {
   border-bottom: 1px solid rgba(15, 36, 25, 0.10);
   background-color: rgba(255, 255, 255, 0.55);
