@@ -6,7 +6,7 @@
       </a>
     </div>
 
-    <div class="surface-glass shadow-pop p-8 sm:p-10">
+    <div class="surface-glass p-8 sm:p-10">
       <div class="text-center mb-6">
         <h1 class="h-page text-3xl mb-1.5">{{ step === 1 ? "创建账号" : "邮箱验证" }}</h1>
         <p class="text-fg-dim text-sm">
@@ -17,15 +17,13 @@
       <!-- 步骤指示 -->
       <div class="flex items-center gap-3 mb-6">
         <div class="flex-1 flex items-center gap-2">
-          <span :class="['inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
-                         step >= 1 ? 'bg-teal-300 text-[#062521]' : 'bg-bg-3 text-fg-mute']">1</span>
-          <span :class="['text-xs', step === 1 ? 'text-fg font-medium' : 'text-fg-dim']">填写资料</span>
+          <span :class="['step-dot', step >= 1 && 'step-dot-active']">1</span>
+          <span :class="['text-xs', step === 1 ? 'text-fg font-semibold' : 'text-fg-dim']">填写资料</span>
         </div>
-        <div class="flex-1 h-px bg-line"></div>
+        <div class="flex-1 h-px" style="background: rgba(15, 36, 25, 0.10)"></div>
         <div class="flex-1 flex items-center gap-2 justify-end">
-          <span :class="['text-xs', step === 2 ? 'text-fg font-medium' : 'text-fg-dim']">邮箱核验</span>
-          <span :class="['inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
-                         step >= 2 ? 'bg-teal-300 text-[#062521]' : 'bg-bg-3 text-fg-mute']">2</span>
+          <span :class="['text-xs', step === 2 ? 'text-fg font-semibold' : 'text-fg-dim']">邮箱核验</span>
+          <span :class="['step-dot', step >= 2 && 'step-dot-active']">2</span>
         </div>
       </div>
 
@@ -53,7 +51,7 @@
       </form>
 
       <form v-else @submit.prevent="onConfirm" class="space-y-4">
-        <div v-if="devCode" class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs">
+        <div v-if="devCode" class="dev-banner">
           <span class="text-warn font-mono font-semibold">DEV ·</span>
           <span class="text-fg ml-1">验证码: <span class="text-teal-300 font-mono font-semibold">{{ devCode }}</span></span>
         </div>
@@ -145,3 +143,34 @@ async function onConfirm() {
   }
 }
 </script>
+
+<style scoped>
+.step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  background-color: rgba(15, 36, 25, 0.06);
+  color: var(--fg-mute);
+  border: 1px solid rgba(15, 36, 25, 0.10);
+  flex-shrink: 0;
+  transition: all 0.18s;
+}
+.step-dot-active {
+  background: linear-gradient(135deg, #34D399, #10B981 60%, #047857);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 10px -3px rgba(16, 185, 129, 0.45);
+}
+.dev-banner {
+  border-radius: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.40);
+  background-color: rgba(254, 243, 199, 0.6);
+  padding: 12px;
+  font-size: 12px;
+}
+</style>

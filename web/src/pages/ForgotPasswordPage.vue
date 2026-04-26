@@ -6,7 +6,7 @@
       </a>
     </div>
 
-    <div class="surface-glass shadow-pop p-8 sm:p-10">
+    <div class="surface-glass p-8 sm:p-10">
       <div class="text-center mb-7">
         <h1 class="h-page text-3xl mb-1.5">{{ step === 1 ? "重置密码" : "设置新密码" }}</h1>
         <p class="text-fg-dim text-sm">
@@ -28,7 +28,7 @@
       </form>
 
       <form v-else @submit.prevent="onReset" class="space-y-4">
-        <div v-if="devCode" class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs">
+        <div v-if="devCode" class="dev-banner">
           <span class="text-warn font-mono font-semibold">DEV ·</span>
           <span class="text-fg ml-1">验证码: <span class="text-teal-300 font-mono font-semibold">{{ devCode }}</span></span>
         </div>
@@ -118,3 +118,13 @@ async function onReset() {
   }
 }
 </script>
+
+<style scoped>
+.dev-banner {
+  border-radius: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.40);
+  background-color: rgba(254, 243, 199, 0.6);
+  padding: 12px;
+  font-size: 12px;
+}
+</style>

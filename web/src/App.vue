@@ -6,7 +6,7 @@
       <component :is="resolvedView" v-if="sessionLoaded" />
       <div v-else class="flex items-center justify-center py-32">
         <div class="flex items-center gap-3 text-fg-dim text-sm">
-          <span class="inline-block h-2 w-2 rounded-full bg-teal-300 animate-shine"></span>
+          <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine"></span>
           <span>加载中</span>
         </div>
       </div>
@@ -17,7 +17,7 @@
         <div class="rule-h"></div>
         <div class="flex flex-wrap items-center justify-between gap-y-3 gap-x-6 py-6">
           <div class="flex items-center gap-3">
-            <span class="sigil" style="width:1.5rem;height:1.5rem;border-radius:7px;"></span>
+            <span class="sigil" style="width:1.5rem;height:1.5rem;border-radius:8px;"></span>
             <span class="text-sm text-fg-dim">Hub · 工具面板</span>
           </div>
           <div class="text-xs text-fg-mute font-mono">© {{ year }}</div>
@@ -75,7 +75,7 @@ const mainClass = computed(() => {
     return "flex-1 flex items-center justify-center px-4 py-16";
   if (route.path === "/oauth/authorize")
     return "flex-1 flex items-center justify-center px-4 py-16";
-  return "flex-1 px-4 py-10 sm:px-6 lg:px-8 mx-auto w-full max-w-7xl";
+  return "flex-1 px-4 py-8 sm:px-6 lg:px-8 mx-auto w-full max-w-7xl";
 });
 
 const year = new Date().getFullYear();

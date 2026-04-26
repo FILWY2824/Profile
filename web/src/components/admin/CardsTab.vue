@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h1 class="h-page">卡片管理</h1>
+        <h1 class="h-page">卡片管理<span class="text-teal-300">.</span></h1>
         <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 张卡片</p>
       </div>
       <button @click="openCreate" class="btn btn-primary">+ 新建卡片</button>
@@ -12,24 +12,24 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">标题</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">URL</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">板块</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">权限</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider w-20">排序</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">标题</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">URL</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">板块</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">权限</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider w-20">排序</th>
               <th class="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in items" :key="c.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
-              <td class="px-4 py-3 font-medium text-fg">{{ c.title }}</td>
+            <tr v-for="c in items" :key="c.id" class="admin-row">
+              <td class="px-4 py-3 font-semibold text-fg">{{ c.title }}</td>
               <td class="px-4 py-3">
                 <a :href="c.url" target="_blank" class="text-xs text-teal-300 hover:underline truncate inline-block max-w-[200px] align-middle font-mono">{{ c.url }}</a>
               </td>
               <td class="px-4 py-3 text-xs text-fg-dim">{{ sectionName(c.sectionId) }}</td>
               <td class="px-4 py-3"><PermissionBadge :value="c.permission" /></td>
-              <td class="px-4 py-3 text-xs text-fg-dim">{{ c.order }}</td>
+              <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ c.order }}</td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 <button @click="openEdit(c)" class="btn btn-ghost btn-sm">编辑</button>
                 <button @click="onDelete(c)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
@@ -114,3 +114,17 @@ async function onDelete(c) {
 }
 onMounted(load);
 </script>
+
+<style scoped>
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+</style>

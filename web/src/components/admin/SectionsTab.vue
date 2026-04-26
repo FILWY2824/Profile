@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h1 class="h-page">板块管理</h1>
+        <h1 class="h-page">板块管理<span class="text-teal-300">.</span></h1>
         <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 个板块</p>
       </div>
       <button @click="openCreate" class="btn btn-primary">+ 新建板块</button>
@@ -11,20 +11,20 @@
     <div class="surface overflow-hidden">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-line bg-bg-2/50">
-            <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">名称</th>
-            <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">Slug</th>
-            <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">描述</th>
-            <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider w-20">排序</th>
+          <tr class="admin-thead">
+            <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">名称</th>
+            <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">Slug</th>
+            <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">描述</th>
+            <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider w-20">排序</th>
             <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="s in items" :key="s.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
-            <td class="px-4 py-3 font-medium text-fg">{{ s.name }}</td>
+          <tr v-for="s in items" :key="s.id" class="admin-row">
+            <td class="px-4 py-3 font-semibold text-fg">{{ s.name }}</td>
             <td class="px-4 py-3 text-xs font-mono text-fg-dim">{{ s.slug }}</td>
             <td class="px-4 py-3 text-xs text-fg-dim truncate max-w-xs">{{ s.description }}</td>
-            <td class="px-4 py-3 text-xs text-fg-dim">{{ s.order }}</td>
+            <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ s.order }}</td>
             <td class="px-4 py-3 text-right whitespace-nowrap">
               <button @click="openEdit(s)" class="btn btn-ghost btn-sm">编辑</button>
               <button @click="onDelete(s)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
@@ -89,3 +89,17 @@ async function onDelete(s) {
 }
 onMounted(load);
 </script>
+
+<style scoped>
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+</style>

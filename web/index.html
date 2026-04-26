@@ -3,34 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0A0E1A" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#F4FBF6" />
+    <meta name="color-scheme" content="light" />
 
     <!--
-      新图标: 灵感来自"层叠圆角方块 + 中心闪光星"
-      简洁几何, 不再使用汉字, 用纯 SVG path 表达"工具集合 + 焦点高亮"
-      - 深空蓝底 #0F1729
-      - 青绿主体 #2DD4BF + 浅青向下渐变
-      - 中心 4 角星 (asterisk-like) 白色
-      文件极小 (< 1KB), 可作 favicon 直接 inline
+      Hub · 柔绿玻璃主题 favicon
+      圆角方块 + 中心闪光星, 渐变 emerald (#34D399 → #047857)
     -->
     <link
       rel="icon"
       type="image/svg+xml"
-      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%232DD4BF'/><stop offset='1' stop-color='%230EA5B7'/></linearGradient></defs><rect width='64' height='64' rx='14' fill='%230F1729'/><rect x='14' y='14' width='36' height='36' rx='9' fill='url(%23g)'/><path d='M32 18 L34 30 L46 32 L34 34 L32 46 L30 34 L18 32 L30 30 Z' fill='%23ffffff'/></svg>"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%2334D399'/><stop offset='0.6' stop-color='%2310B981'/><stop offset='1' stop-color='%23047857'/></linearGradient></defs><rect width='64' height='64' rx='14' fill='%23F4FBF6'/><rect x='10' y='10' width='44' height='44' rx='12' fill='url(%23g)'/><path d='M32 18 L34 30 L46 32 L34 34 L32 46 L30 34 L18 32 L30 30 Z' fill='%23ffffff'/></svg>"
     />
 
-    <!-- Apple touch icon (圆角处理由 iOS 自动加上, 这里直接给方版) -->
     <link
       rel="apple-touch-icon"
-      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%232DD4BF'/><stop offset='1' stop-color='%230EA5B7'/></linearGradient></defs><rect width='180' height='180' fill='%230F1729'/><rect x='40' y='40' width='100' height='100' rx='24' fill='url(%23g)'/><path d='M90 50 L95 85 L130 90 L95 95 L90 130 L85 95 L50 90 L85 85 Z' fill='%23ffffff'/></svg>"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%2334D399'/><stop offset='0.6' stop-color='%2310B981'/><stop offset='1' stop-color='%23047857'/></linearGradient></defs><rect width='180' height='180' fill='%23F4FBF6'/><rect x='30' y='30' width='120' height='120' rx='28' fill='url(%23g)'/><path d='M90 50 L95 85 L130 90 L95 95 L90 130 L85 95 L50 90 L85 85 Z' fill='%23ffffff'/></svg>"
     />
 
-    <!-- 字体策略 -->
+    <!-- 字体: Bricolage Grotesque (display) + Plus Jakarta Sans (sans) + Noto Sans SC (CJK) + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 

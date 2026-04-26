@@ -1,18 +1,18 @@
 <template>
   <div class="space-y-6 pb-24">
     <header>
-      <h1 class="h-page">系统设置</h1>
+      <h1 class="h-page">系统设置<span class="text-teal-300">.</span></h1>
       <p class="text-fg-dim text-sm mt-1.5">所有改动只对新会话生效;部分项保存后立即热重载</p>
     </header>
 
     <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
-      <span class="inline-block h-2 w-2 rounded-full bg-teal-300 animate-shine mr-2 align-middle"></span>
+      <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine mr-2 align-middle"></span>
       加载中
     </div>
 
     <div v-else class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-5">
       <!-- Category sidebar -->
-      <aside class="lg:sticky lg:top-20 lg:self-start space-y-3">
+      <aside class="lg:sticky lg:top-24 lg:self-start space-y-3">
         <input v-model="search" placeholder="搜索键名 / 描述…" class="input" />
         <div class="surface p-2 space-y-0.5">
           <button @click="activeCategory = 'all'"
@@ -29,9 +29,9 @@
           </button>
         </div>
 
-        <div v-if="modifiedKeys.length > 0" class="surface p-3 border-warn/40 bg-warn/5">
-          <div class="text-xs text-warn font-medium">{{ modifiedKeys.length }} 项未保存</div>
-          <ul class="text-[11px] text-warn/80 font-mono mt-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+        <div v-if="modifiedKeys.length > 0" class="settings-modified-pile">
+          <div class="text-xs text-warn font-semibold">{{ modifiedKeys.length }} 项未保存</div>
+          <ul class="text-[11px] font-mono mt-1.5 space-y-0.5 max-h-32 overflow-y-auto" style="color: #B45309">
             <li v-for="k in modifiedKeys.slice(0, 8)" :key="k">{{ k }}</li>
             <li v-if="modifiedKeys.length > 8" class="opacity-70">…还有 {{ modifiedKeys.length - 8 }} 项</li>
           </ul>
@@ -46,8 +46,7 @@
 
         <div v-else
              v-for="row in filteredItems" :key="row.key"
-             :class="['surface p-4 transition-colors',
-                      isModified(row.key) && '!border-warn/40 bg-warn/5']">
+             :class="['surface p-4 transition-colors', isModified(row.key) && 'setting-row-modified']">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 md:items-start">
             <div class="md:pr-2">
               <div class="flex items-center gap-2 flex-wrap">
@@ -84,13 +83,12 @@
 
     <!-- Floating save bar -->
     <transition name="bar">
-      <div v-if="modifiedKeys.length > 0"
-           class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 surface-glass shadow-pop px-4 py-3 flex items-center gap-3">
+      <div v-if="modifiedKeys.length > 0" class="floating-save-bar">
         <div class="text-sm">
-          <span class="font-medium text-fg">{{ modifiedKeys.length }}</span>
+          <span class="font-semibold text-fg">{{ modifiedKeys.length }}</span>
           <span class="text-fg-dim"> 项未保存</span>
         </div>
-        <div class="h-4 w-px bg-line"></div>
+        <div class="h-4 w-px" style="background: rgba(15, 36, 25, 0.16)"></div>
         <button @click="resetAll" class="btn btn-ghost btn-sm">全部还原</button>
         <button @click="save" :disabled="busy" class="btn btn-primary btn-sm">{{ busy ? "保存中…" : "保存修改" }}</button>
       </div>
@@ -194,6 +192,37 @@ onMounted(load);
 </script>
 
 <style scoped>
-.bar-enter-active, .bar-leave-active { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); }
+.settings-modified-pile {
+  background-color: rgba(254, 243, 199, 0.55);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-radius: 16px;
+  padding: 12px;
+}
+.setting-row-modified {
+  border-color: rgba(217, 119, 6, 0.40) !important;
+  background-color: rgba(254, 243, 199, 0.45) !important;
+}
+.floating-save-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background-color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 18px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 12px 32px -8px rgba(15, 36, 25, 0.18);
+}
+
+.bar-enter-active, .bar-leave-active { transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 .bar-enter-from, .bar-leave-to { opacity: 0; transform: translate(-50%, 20px); }
 </style>

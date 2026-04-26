@@ -5,8 +5,8 @@
         v-for="t in toasts"
         :key="t.id"
         :class="[
-          'flex items-start gap-3 px-4 py-3 pointer-events-auto rounded-xl border',
-          'surface-glass shadow-pop',
+          'flex items-start gap-3 px-4 py-3 pointer-events-auto rounded-2xl border',
+          'surface-glass',
           ringClass(t.type)
         ]"
       >
@@ -32,18 +32,26 @@
 import { toasts, dismissToast } from "../toast.js";
 
 function ringClass(t) {
-  if (t === "ok")  return "border-ok/40";
-  if (t === "err") return "border-danger/40";
-  return "border-teal-300/40";
+  if (t === "ok")  return "border-ok-ring";
+  if (t === "err") return "border-danger-ring";
+  return "border-brand-ring";
 }
 function dotBg(t) {
-  if (t === "ok")  return "bg-ok";
-  if (t === "err") return "bg-danger";
-  return "bg-teal-300";
+  if (t === "ok")  return "dot-ok";
+  if (t === "err") return "dot-err";
+  return "dot-brand";
 }
 </script>
 
 <style scoped>
+.border-ok-ring     { border-color: rgba(16, 185, 129, 0.40) !important; }
+.border-danger-ring { border-color: rgba(220, 38, 38, 0.40) !important; }
+.border-brand-ring  { border-color: rgba(16, 185, 129, 0.30) !important; }
+
+.dot-ok    { background: linear-gradient(135deg, #34D399, #059669); }
+.dot-err   { background: linear-gradient(135deg, #F87171, #DC2626); }
+.dot-brand { background: linear-gradient(135deg, #34D399, #10B981 60%, #047857); }
+
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);

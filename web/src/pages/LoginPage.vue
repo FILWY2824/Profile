@@ -7,9 +7,9 @@
       </a>
     </div>
 
-    <div class="surface-glass shadow-pop p-8 sm:p-10">
+    <div class="surface-glass p-8 sm:p-10">
       <div class="text-center mb-7">
-        <h1 class="h-page text-3xl mb-1.5">欢迎回来</h1>
+        <h1 class="h-page text-3xl mb-1.5">欢迎回来<span class="text-teal-300">.</span></h1>
         <p class="text-fg-dim text-sm">登录到你的工具面板</p>
       </div>
 

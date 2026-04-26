@@ -1,20 +1,15 @@
 <template>
   <div class="space-y-6">
     <header>
-      <h1 class="h-page">审计</h1>
+      <h1 class="h-page">审计<span class="text-teal-300">.</span></h1>
       <p class="text-fg-dim text-sm mt-1.5">登录历史与活动日志</p>
     </header>
 
     <!-- 子 Tab 切换 -->
-    <div class="inline-flex items-center gap-1 surface p-1 rounded-xl">
+    <div class="audit-subtabs">
       <button v-for="t in tabs" :key="t.id"
               @click="active = t.id"
-              :class="[
-                'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                active === t.id
-                  ? 'bg-teal-300 text-[#062521]'
-                  : 'text-fg-dim hover:text-fg'
-              ]">
+              :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
         {{ t.label }}
       </button>
     </div>
@@ -24,19 +19,19 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">时间</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">邮箱</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">IP</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">结果</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">原因</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">时间</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">邮箱</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">IP</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">结果</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">原因</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loginRows.length === 0">
               <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无登录记录</td>
             </tr>
-            <tr v-for="r in loginRows" :key="r.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+            <tr v-for="r in loginRows" :key="r.id" class="admin-row">
               <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.email }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg-dim">{{ r.ip }}</td>
@@ -57,19 +52,19 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">时间</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">用户</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">操作</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">详情</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">IP</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">时间</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">用户</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">操作</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">详情</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">IP</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="activityRows.length === 0">
               <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无活动记录</td>
             </tr>
-            <tr v-for="r in activityRows" :key="r.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+            <tr v-for="r in activityRows" :key="r.id" class="admin-row">
               <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.username || r.email || '—' }}</td>
               <td class="px-4 py-3"><span class="badge-slate">{{ r.action }}</span></td>
@@ -106,3 +101,56 @@ async function load() {
 watch(active, load);
 onMounted(load);
 </script>
+
+<style scoped>
+.audit-subtabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+.audit-subtab {
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  transition: background-color 0.15s, color 0.15s;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.audit-subtab:hover {
+  color: var(--fg);
+  background-color: rgba(255, 255, 255, 0.5);
+}
+.audit-subtab-active {
+  background: linear-gradient(135deg, #34D399, #10B981 60%, #047857);
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 4px 10px -3px rgba(16, 185, 129, 0.45);
+}
+.audit-subtab-active:hover {
+  color: #fff;
+}
+
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+</style>

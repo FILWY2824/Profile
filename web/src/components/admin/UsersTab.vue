@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h1 class="h-page">用户管理</h1>
+        <h1 class="h-page">用户管理<span class="text-teal-300">.</span></h1>
         <p class="text-fg-dim text-sm mt-1.5">{{ users.length }} / {{ total }} 用户</p>
       </div>
       <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
@@ -12,17 +12,17 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">邮箱</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">姓名</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">角色</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">状态</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">最后登录</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">邮箱</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">姓名</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">角色</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">状态</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">最后登录</th>
               <th class="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+            <tr v-for="u in users" :key="u.id" class="admin-row">
               <td class="px-4 py-3 font-mono text-xs text-fg">{{ u.email }}</td>
               <td class="px-4 py-3 text-fg">{{ u.name }}</td>
               <td class="px-4 py-3"><span :class="roleBadge(u.role)">{{ roleLabel(u.role) }}</span></td>
@@ -152,3 +152,17 @@ async function onDelete(u) {
 
 onMounted(load);
 </script>
+
+<style scoped>
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+</style>

@@ -1,14 +1,14 @@
 <template>
   <transition name="modal">
     <div v-if="modelValue" class="fixed inset-0 z-40 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-bg-0/80 backdrop-blur-sm" @click="$emit('update:modelValue', false)"></div>
-      <div class="relative surface-glass shadow-pop w-full max-w-lg overflow-hidden">
+      <div class="absolute inset-0 modal-scrim" @click="$emit('update:modelValue', false)"></div>
+      <div class="relative surface-glass w-full max-w-lg overflow-hidden">
         <!-- header -->
         <div class="px-6 pt-5 pb-4 flex items-start justify-between gap-4 border-b border-line">
           <h3 class="h-sub flex-1 min-w-0">{{ title }}</h3>
           <button
             @click="$emit('update:modelValue', false)"
-            class="text-fg-mute hover:text-fg p-1 -m-1 rounded-md hover:bg-white/5 transition-colors flex-shrink-0"
+            class="text-fg-mute hover:text-fg p-1 -m-1 rounded-md transition-colors flex-shrink-0 close-btn"
             aria-label="关闭"
           >
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -17,7 +17,7 @@
           </button>
         </div>
         <div class="p-6 max-h-[70vh] overflow-y-auto"><slot /></div>
-        <div v-if="$slots.footer" class="px-6 py-4 bg-bg-2/50 border-t border-line flex justify-end gap-2.5">
+        <div v-if="$slots.footer" class="px-6 py-4 modal-footer border-t border-line flex justify-end gap-2.5">
           <slot name="footer" />
         </div>
       </div>
@@ -31,6 +31,18 @@ defineEmits(["update:modelValue"]);
 </script>
 
 <style scoped>
+.modal-scrim {
+  background-color: rgba(15, 36, 25, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.modal-footer {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+.close-btn:hover {
+  background-color: rgba(15, 36, 25, 0.06);
+}
+
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-active > div, .modal-leave-active > div { transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }

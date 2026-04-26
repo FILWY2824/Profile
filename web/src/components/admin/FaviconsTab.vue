@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-6">
     <header>
-      <h1 class="h-page">图标缓存</h1>
+      <h1 class="h-page">图标缓存<span class="text-teal-300">.</span></h1>
       <p class="text-fg-dim text-sm mt-1.5">解析卡片站点的 &lt;link rel="icon"&gt; 抓取精确图标</p>
     </header>
 
@@ -9,13 +9,13 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider w-12"></th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">Origin</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">来源</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">类型</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">抓取时间</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">错误</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider w-12"></th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">Origin</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">来源</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">类型</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">抓取时间</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">错误</th>
               <th class="px-4 py-3"></th>
             </tr>
           </thead>
@@ -23,9 +23,9 @@
             <tr v-if="items.length === 0">
               <td colspan="7" class="px-4 py-12 text-center text-fg-dim text-sm">暂无</td>
             </tr>
-            <tr v-for="r in items" :key="r.origin" class="border-b border-line/60 hover:bg-white/3 transition-colors">
+            <tr v-for="r in items" :key="r.origin" class="admin-row">
               <td class="px-4 py-3">
-                <div class="h-7 w-7 rounded-lg bg-bg-0 border border-line flex items-center justify-center overflow-hidden">
+                <div class="favicon-wrap">
                   <img v-if="r.hasData" :src="`/api/favicons/image?origin=${encodeURIComponent(r.origin)}`" class="h-5 w-5" />
                 </div>
               </td>
@@ -66,3 +66,28 @@ async function onDelete(origin) {
 }
 onMounted(load);
 </script>
+
+<style scoped>
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.favicon-wrap {
+  height: 28px;
+  width: 28px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(15, 36, 25, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+</style>

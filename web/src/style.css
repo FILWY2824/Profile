@@ -3,35 +3,67 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Constellation Dashboard · 全局样式
+   Hub · 柔绿玻璃主题 (Soft Mint Glass)
    设计要点:
-     - 深空蓝底 (#0A0E1A) + 玻璃 surface
-     - 大圆角, 细 ring 边框替代厚 box-shadow (省 GPU)
-     - 青绿主品牌色 #2DD4BF, 蓝色辅助 accent #3B82F6
-     - 装饰: 顶部/角落微弱径向光晕 (background-image 一次, 不动画)
+     - 极浅薄荷底 (#F4FBF6) + 4 层 mesh 渐变 (薄荷 / 嫩绿 / 浅青 / 暖米)
+     - 半透明白色玻璃 surface + backdrop-blur saturate(160%)
+     - 大圆角 (16-24px), 内描边 (rgba 白) 替代厚 box-shadow
+     - 主品牌青绿 #14B8A6, 强调 #10B981, 文字深绿色调墨色
+     - 字体: Bricolage Grotesque (display) + Plus Jakarta Sans (sans) + Noto Sans SC (CJK)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg-0:      #070B14;
-  --bg-1:      #0A0E1A;
-  --bg-2:      #0F1729;
-  --bg-3:      #161D2F;
-  --bg-4:      #1E2740;
-  --surface:   #161D2F;
-  --surface-hi:#1E2740;
-  --line:      rgba(148, 163, 184, 0.12);
-  --line-strong: rgba(148, 163, 184, 0.22);
-  --line-faint:  rgba(148, 163, 184, 0.06);
-  --fg:        #E2E8F0;
-  --fg-dim:    #94A3B8;
-  --fg-mute:   #64748B;
-  --fg-faint:  #475569;
-  --teal-300:  #2DD4BF;
-  --teal-400:  #14B8A6;
-  --sky-400:   #3B82F6;
-  --ok:        #10B981;
-  --warn:      #F59E0B;
-  --danger:    #F43F5E;
+  /* ── 背景层 ─ 在浅色玻璃中, "bg-N" 不再表示纯色面, 而是不同层级的"次表面" */
+  --bg-base:   #F4FBF6;
+  --bg-0:      #F4FBF6;
+  --bg-1:      #F4FBF6;
+  --bg-2:      rgba(255, 255, 255, 0.50);
+  --bg-3:      rgba(255, 255, 255, 0.65);
+  --bg-4:      rgba(255, 255, 255, 0.80);
+
+  /* ── 表面 / 卡片 */
+  --surface:    rgba(255, 255, 255, 0.65);
+  --surface-hi: rgba(255, 255, 255, 0.85);
+  --surface-soft: rgba(255, 255, 255, 0.40);
+
+  /* ── 描边 (低对比墨绿) */
+  --line:        rgba(15, 36, 25, 0.08);
+  --line-strong: rgba(15, 36, 25, 0.16);
+  --line-faint:  rgba(15, 36, 25, 0.04);
+  --line-bright: rgba(255, 255, 255, 0.80);  /* 玻璃高光内描边 */
+
+  /* ── 文字 */
+  --fg:        #0F2419;
+  --fg-dim:    #2D4A3E;
+  --fg-mute:   #5A7468;
+  --fg-faint:  #8FA89A;
+
+  /* ── 主品牌 */
+  --teal-50:   #ECFDF5;
+  --teal-100:  #D1FAE5;
+  --teal-200:  #A7F3D0;
+  --teal-300:  #6EE7B7;
+  --teal-400:  #34D399;
+  --teal-500:  #10B981;
+  --teal-600:  #059669;
+  --teal-700:  #047857;
+  --teal-800:  #065F46;
+
+  /* legacy alias - 老代码用 teal-300 表示主品牌, 在浅色下我们映射为 teal-500 */
+  --brand:     #10B981;
+  --brand-hi:  #14B8A6;
+  --brand-deep:#047857;
+  --brand-ink: #022C22;  /* 主按钮上的字色 */
+
+  /* ── 辅助 */
+  --sky-300:   #67E8F9;
+  --sky-400:   #06B6D4;
+  --sky-500:   #0891B2;
+
+  /* ── 状态 */
+  --ok:        #059669;
+  --warn:      #D97706;
+  --danger:    #DC2626;
 }
 
 @layer base {
@@ -42,21 +74,22 @@
   }
 
   body {
-    background-color: var(--bg-1);
+    background-color: var(--bg-base);
     color: var(--fg);
     font-family: theme('fontFamily.sans');
     min-height: 100vh;
-    /* 极轻量的氛围光: 只用两个 radial-gradient, 无动画, 不影响低性能服务器渲染.
-       附着 fixed 让滚动时不会重绘. */
+    /* 4 层柔绿 mesh 渐变, fixed 附着减少滚动重绘 */
     background-image:
-      radial-gradient(1200px 600px at 80% -10%, rgba(45, 212, 191, 0.06), transparent 60%),
-      radial-gradient(900px 500px at 0% 110%, rgba(59, 130, 246, 0.05), transparent 55%);
+      radial-gradient(720px 600px at 8% 4%,    rgba(167, 243, 208, 0.55), transparent 55%),
+      radial-gradient(680px 540px at 96% 14%,  rgba(187, 247, 208, 0.50), transparent 58%),
+      radial-gradient(620px 480px at 90% 96%,  rgba(165, 243, 252, 0.45), transparent 60%),
+      radial-gradient(540px 420px at 4% 92%,   rgba(254, 243, 199, 0.45), transparent 60%);
     background-attachment: fixed;
   }
 
   ::selection {
-    background-color: rgba(45, 212, 191, 0.28);
-    color: #fff;
+    background-color: rgba(16, 185, 129, 0.22);
+    color: var(--fg);
   }
 
   hr { border: 0; border-top: 1px solid var(--line); }
@@ -64,135 +97,159 @@
   input, textarea, select, button { font-family: inherit; color: inherit; }
 
   a {
-    color: var(--teal-300);
+    color: var(--brand-deep);
     text-decoration: none;
   }
-  a:hover { color: #5EEAD4; }
+  a:hover { color: var(--teal-700); }
 }
 
 @layer components {
 
-  /* ── Surface ─────────────────────────────────────────────────
-     surface = 玻璃质感卡片: 半透明深面 + 1px 内描边, 无厚 shadow.
-     省 GPU, 在低端设备也能稳定 60fps. */
+  /* ── Surface ────────────────────────────────────────────────
+     玻璃卡片: 半透明白底 + backdrop-blur + 内描边 (内白 + 外墨) */
   .surface {
     background-color: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--line-bright);
+    border-radius: 20px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.85) inset,
+      0 12px 36px -16px rgba(15, 36, 25, 0.10);
   }
   .surface-soft {
-    background-color: rgba(22, 29, 47, 0.55);
-    border: 1px solid var(--line-faint);
-    border-radius: 14px;
+    background-color: var(--surface-soft);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid var(--line-bright);
+    border-radius: 16px;
   }
   .surface-hi {
     background-color: var(--surface-hi);
-    border: 1px solid var(--line-strong);
-    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 12px 36px -14px rgba(15, 36, 25, 0.12);
   }
   .surface-glass {
-    background-color: rgba(22, 29, 47, 0.72);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 20px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.85) inset,
+      0 8px 32px -12px rgba(15, 36, 25, 0.10);
   }
   .surface-hover {
     background-color: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--line-bright);
+    border-radius: 20px;
+    transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
   }
   .surface-hover:hover {
-    border-color: rgba(45, 212, 191, 0.4);
-    background-color: var(--surface-hi);
+    border-color: rgba(16, 185, 129, 0.35);
+    background-color: rgba(255, 255, 255, 0.85);
     transform: translateY(-1px);
+    box-shadow: 0 14px 32px -14px rgba(15, 36, 25, 0.16);
   }
 
-  /* ── Buttons ────────────────────────────────────────────────
-     现代 pill 形按钮. primary = 青绿 fill. ghost / secondary 走透明描边.
-     不用大 box-shadow, 高对比 + ring 表达层级. */
+  /* ── Buttons ─────────────────────────────────────────────── */
   .btn {
     display: inline-flex; align-items: center; justify-content: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    border-radius: 10px;
-    font-size: 0.875rem; font-weight: 500;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 600;
     line-height: 1.2;
     letter-spacing: -0.005em;
     border: 1px solid transparent;
-    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 80ms ease;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease,
+                transform 80ms ease, box-shadow 140ms ease;
     cursor: pointer; user-select: none;
     color: var(--fg);
   }
   .btn:focus-visible {
-    outline: 2px solid var(--teal-300);
+    outline: 2px solid var(--brand-hi);
     outline-offset: 2px;
   }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
   .btn-primary {
-    background-color: var(--teal-300);
-    color: #062521;
-    border-color: var(--teal-300);
-    font-weight: 600;
+    background: linear-gradient(135deg, var(--brand-hi), var(--brand) 50%, var(--brand-deep));
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.3) inset,
+      0 6px 16px -6px rgba(16, 185, 129, 0.45);
   }
   .btn-primary:hover:not(:disabled) {
-    background-color: #5EEAD4;
-    border-color: #5EEAD4;
+    background: linear-gradient(135deg, #2DD4BF, #14B8A6 50%, #059669);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.35) inset,
+      0 8px 22px -6px rgba(16, 185, 129, 0.55);
   }
   .btn-primary:active:not(:disabled) { transform: translateY(1px); }
 
   .btn-secondary {
-    background-color: transparent;
+    background-color: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(8px);
     border-color: var(--line-strong);
     color: var(--fg);
   }
   .btn-secondary:hover:not(:disabled) {
-    background-color: rgba(148, 163, 184, 0.08);
-    border-color: rgba(148, 163, 184, 0.4);
+    background-color: rgba(255, 255, 255, 0.85);
+    border-color: rgba(15, 36, 25, 0.25);
   }
 
   .btn-ghost {
     background-color: transparent;
     border-color: transparent;
     color: var(--fg-dim);
+    font-weight: 500;
   }
   .btn-ghost:hover:not(:disabled) {
-    background-color: rgba(148, 163, 184, 0.08);
+    background-color: rgba(255, 255, 255, 0.6);
     color: var(--fg);
   }
 
   .btn-accent {
-    background-color: var(--sky-400);
-    color: #fff;
-    border-color: var(--sky-400);
-    font-weight: 600;
+    background: linear-gradient(135deg, var(--sky-300), var(--sky-400) 60%, var(--sky-500));
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.3) inset,
+      0 6px 16px -6px rgba(6, 182, 212, 0.45);
   }
   .btn-accent:hover:not(:disabled) {
-    background-color: #60A5FA;
-    border-color: #60A5FA;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.35) inset,
+      0 8px 22px -6px rgba(6, 182, 212, 0.55);
   }
 
   .btn-danger {
-    background-color: transparent;
+    background-color: rgba(255, 255, 255, 0.6);
     color: var(--danger);
-    border-color: rgba(244, 63, 94, 0.4);
+    border-color: rgba(220, 38, 38, 0.30);
+    font-weight: 500;
   }
   .btn-danger:hover:not(:disabled) {
-    background-color: rgba(244, 63, 94, 0.12);
-    border-color: var(--danger);
+    background-color: rgba(254, 226, 226, 0.85);
+    border-color: rgba(220, 38, 38, 0.55);
   }
 
   .btn-sm {
     padding: 0.3125rem 0.75rem;
     font-size: 0.8125rem;
-    border-radius: 8px;
+    border-radius: 9px;
   }
 
-  /* ── Inputs ─────────────────────────────────────────────────
-     盒型为主 (深底 + ring border), 聚焦时青绿描边. 不再用 hairline
-     底边样式 — 那是编辑感, 这里要现代工具感. */
+  /* ── Inputs ───────────────────────────────────────────────── */
   .input,
   .input-mono,
   .input-box,
@@ -201,14 +258,17 @@
   select.input {
     display: block;
     width: 100%;
-    background-color: rgba(7, 11, 20, 0.45);
+    background-color: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: var(--fg);
     padding: 0.625rem 0.875rem;
     font-size: 0.875rem;
     line-height: 1.4;
-    border: 1px solid var(--line-strong);
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 12px;
     transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+    box-shadow: 0 1px 2px rgba(15, 36, 25, 0.04) inset;
   }
   .input::placeholder,
   .input-mono::placeholder,
@@ -221,7 +281,8 @@
   .input-box:hover:not(:focus),
   textarea:hover:not(:focus),
   select:hover:not(:focus) {
-    border-color: rgba(148, 163, 184, 0.4);
+    background-color: rgba(255, 255, 255, 0.80);
+    border-color: rgba(15, 36, 25, 0.16);
   }
   .input:focus,
   .input-mono:focus,
@@ -229,23 +290,24 @@
   textarea:focus,
   select:focus {
     outline: none;
-    border-color: var(--teal-300);
-    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
-    background-color: rgba(7, 11, 20, 0.65);
+    border-color: rgba(16, 185, 129, 0.55);
+    background-color: rgba(255, 255, 255, 0.95);
+    box-shadow:
+      0 0 0 4px rgba(16, 185, 129, 0.12),
+      0 1px 2px rgba(15, 36, 25, 0.04) inset;
   }
   .input-mono { font-family: theme('fontFamily.mono'); font-size: 0.8125rem; }
 
   .label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--fg-dim);
     margin-bottom: 0.4375rem;
     letter-spacing: -0.005em;
   }
 
-  /* ── Badge ──────────────────────────────────────────────────
-     现代风: 小圆角填充 + 半透明背景, 不用 全大写编辑感. */
+  /* ── Badge / Chip ─────────────────────────────────────────── */
   .badge {
     display: inline-flex; align-items: center; gap: 0.25rem;
     padding: 0.1875rem 0.5rem;
@@ -258,11 +320,11 @@
     border-radius: 999px;
     background-color: transparent;
   }
-  /* 兼容旧 admin 代码的 alias - 全部映射到现代 chip 样式 */
+
   .badge-slate, .badge-ash {
-    color: var(--fg-dim);
-    background-color: rgba(148, 163, 184, 0.10);
-    border-color: rgba(148, 163, 184, 0.25);
+    color: var(--fg-mute);
+    background-color: rgba(15, 36, 25, 0.06);
+    border: 1px solid rgba(15, 36, 25, 0.14);
     padding: 0.1875rem 0.5rem;
     border-radius: 999px;
     display: inline-flex;
@@ -271,9 +333,9 @@
     font-weight: 500;
   }
   .badge-emerald, .badge-sage {
-    color: #34D399;
+    color: var(--teal-700);
     background-color: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    border: 1px solid rgba(16, 185, 129, 0.30);
     padding: 0.1875rem 0.5rem;
     border-radius: 999px;
     display: inline-flex;
@@ -282,9 +344,9 @@
     font-weight: 500;
   }
   .badge-red, .badge-rust {
-    color: #FB7185;
-    background-color: rgba(244, 63, 94, 0.12);
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    color: #B91C1C;
+    background-color: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.28);
     padding: 0.1875rem 0.5rem;
     border-radius: 999px;
     display: inline-flex;
@@ -293,9 +355,9 @@
     font-weight: 500;
   }
   .badge-amber, .badge-ochre {
-    color: #FBBF24;
-    background-color: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #B45309;
+    background-color: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.32);
     padding: 0.1875rem 0.5rem;
     border-radius: 999px;
     display: inline-flex;
@@ -304,9 +366,9 @@
     font-weight: 500;
   }
   .badge-accent, .badge-cinnabar, .badge-ink {
-    color: var(--teal-300);
-    background-color: rgba(45, 212, 191, 0.10);
-    border: 1px solid rgba(45, 212, 191, 0.32);
+    color: var(--brand-deep);
+    background-color: rgba(16, 185, 129, 0.10);
+    border: 1px solid rgba(16, 185, 129, 0.32);
     padding: 0.1875rem 0.5rem;
     border-radius: 999px;
     display: inline-flex;
@@ -319,18 +381,20 @@
   .h-page {
     font-family: theme('fontFamily.display');
     font-weight: 700;
-    font-size: clamp(1.75rem, 3.6vw, 2.5rem);
-    line-height: 1.1;
-    letter-spacing: -0.025em;
+    font-size: clamp(1.875rem, 4vw, 2.75rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
     color: var(--fg);
+    font-variation-settings: "opsz" 48;
   }
   .h-section {
     font-family: theme('fontFamily.display');
-    font-weight: 600;
-    font-size: 1.25rem;
-    line-height: 1.25;
-    letter-spacing: -0.015em;
+    font-weight: 700;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    letter-spacing: -0.022em;
     color: var(--fg);
+    font-variation-settings: "opsz" 36;
   }
   .h-sub {
     font-family: theme('fontFamily.display');
@@ -343,23 +407,23 @@
   .text-muted, .text-ash, .text-fg-dim { color: var(--fg-dim); }
   .text-tinted, .text-fg-mute { color: var(--fg-mute); }
   .text-fg { color: var(--fg); }
-  .text-teal { color: var(--teal-300); }
-  .text-sky  { color: var(--sky-400); }
+  .text-teal { color: var(--brand-deep); }
+  .text-sky  { color: var(--sky-500); }
   .text-ok   { color: var(--ok); }
   .text-warn { color: var(--warn); }
   .text-danger { color: var(--danger); }
 
   /* 旧别名兼容 */
   .text-ink         { color: var(--fg); }
-  .text-ink-2       { color: var(--fg); }
+  .text-ink-2       { color: var(--fg-dim); }
   .text-ash-2       { color: var(--fg-mute); }
-  .text-cinnabar    { color: var(--teal-300); }
-  .text-cinnabar-deep { color: var(--teal-400); }
-  .text-sage        { color: #34D399; }
+  .text-cinnabar    { color: var(--brand); }
+  .text-cinnabar-deep { color: var(--brand-deep); }
+  .text-sage        { color: var(--teal-700); }
   .text-rust        { color: var(--danger); }
   .text-ochre       { color: var(--warn); }
 
-  /* 旧 archive-no 字样 — 重定向为现代 mono caption */
+  /* 旧 archive-no 字样 — mono caption */
   .archive-no, .archive-no-strong {
     font-family: theme('fontFamily.mono');
     font-size: 0.6875rem;
@@ -375,7 +439,7 @@
   .rule-h-strong { height: 1px; background-color: var(--line-strong); }
   .rule-double   { height: 1px; background-color: var(--line-strong); }
 
-  /* ── Tab pill (admin sidebar) ─────────────────────────────── */
+  /* ── Tab pill ──────────────────────────────────────────────── */
   .tab-pill {
     display: flex; align-items: center; gap: 0.625rem;
     width: 100%;
@@ -384,7 +448,7 @@
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--fg-dim);
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid transparent;
     transition: all 140ms ease;
     cursor: pointer;
@@ -392,37 +456,39 @@
   }
   .tab-pill:hover {
     color: var(--fg);
-    background-color: rgba(148, 163, 184, 0.06);
+    background-color: rgba(255, 255, 255, 0.6);
   }
   .tab-pill-active {
-    color: #062521;
-    background-color: var(--teal-300);
-    border-color: var(--teal-300);
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--brand-hi), var(--brand) 60%, var(--brand-deep));
+    border-color: transparent;
     font-weight: 600;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.3) inset,
+      0 4px 12px -4px rgba(16, 185, 129, 0.4);
   }
   .tab-pill-active:hover {
-    color: #062521;
-    background-color: #5EEAD4;
+    color: #ffffff;
+    background: linear-gradient(135deg, #2DD4BF, #14B8A6 60%, #059669);
   }
 
-  /* ── Logo / Sigil ────────────────────────────────────────────
-     新 logo: 圆角方块 + 中心闪光. 不再用"栖"汉字, 用纯几何 SVG. */
+  /* ── Logo / Sigil ─────────────────────────────────────────── */
   .sigil {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: 9px;
-    background: linear-gradient(160deg, #2DD4BF, #0EA5B7 70%, #0E7490);
-    box-shadow: 0 6px 18px -6px rgba(45, 212, 191, 0.5),
-                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    background: linear-gradient(135deg, #34D399, #10B981 55%, #047857);
+    box-shadow:
+      0 6px 18px -6px rgba(16, 185, 129, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
     position: relative;
     overflow: hidden;
     flex-shrink: 0;
   }
   .sigil::after {
-    /* 中心 4 角星, 用纯 CSS path 实现 */
     content: "";
     position: absolute; inset: 0;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 6 L17.5 14.5 L26 16 L17.5 17.5 L16 26 L14.5 17.5 L6 16 L14.5 14.5 Z' fill='white'/></svg>");
@@ -440,10 +506,39 @@
     height: 4.5rem;
     border-radius: 18px;
   }
-
-  /* 旧 .seal 别名映射, 让没改 markup 的页面还能渲染 */
   .seal { @apply sigil; }
   .seal-lg { @apply sigil-lg; }
+
+  /* ── Admin tables ──────────────────────────────────────────── */
+  .admin-table {
+    width: 100%;
+    font-size: 0.875rem;
+  }
+  .admin-table thead tr {
+    border-bottom: 1px solid var(--line-strong);
+    background-color: rgba(255, 255, 255, 0.40);
+  }
+  .admin-table thead th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    color: var(--fg-mute);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .admin-table tbody tr {
+    border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+    transition: background-color 0.14s;
+  }
+  .admin-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+  }
+  .admin-table tbody tr:last-child { border-bottom: none; }
+  .admin-table tbody td {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+  }
 
   /* ── App-icon style card (HomePage 主样式) ─────────────────── */
   .app-tile {
@@ -452,60 +547,119 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 1.25rem 1rem 1rem;
-    background-color: var(--surface);
-    border: 1px solid var(--line);
+    padding: 1.125rem 0.875rem 0.875rem;
+    background-color: rgba(255, 255, 255, 0.60);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
     border-radius: 18px;
-    transition: border-color 200ms ease, background-color 200ms ease, transform 200ms ease;
+    transition: all 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
     cursor: pointer;
     text-decoration: none;
     color: var(--fg);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
   }
   .app-tile:hover {
-    border-color: rgba(45, 212, 191, 0.5);
-    background-color: var(--surface-hi);
+    border-color: rgba(255, 255, 255, 0.95);
+    background-color: rgba(255, 255, 255, 0.92);
     transform: translateY(-2px);
     color: var(--fg);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.8) inset,
+      0 14px 30px -12px rgba(15, 36, 25, 0.18);
   }
   .app-tile-icon {
     width: 56px;
     height: 56px;
     border-radius: 14px;
-    background: linear-gradient(160deg, #1E2740, #0F1729);
-    border: 1px solid var(--line-strong);
+    background: linear-gradient(160deg, #FFFFFF, #ECFDF5);
+    border: 1px solid rgba(15, 36, 25, 0.06);
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: 0.75rem;
     overflow: hidden;
     flex-shrink: 0;
-    transition: transform 200ms ease;
+    transition: transform 220ms ease;
+    box-shadow: 0 4px 12px -4px rgba(15, 36, 25, 0.08);
   }
   .app-tile:hover .app-tile-icon {
-    transform: scale(1.05);
+    transform: scale(1.06);
   }
   .app-tile-icon img {
     width: 32px;
     height: 32px;
     object-fit: contain;
   }
+  .app-tile-fallback {
+    font-family: theme('fontFamily.display');
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--brand);
+    letter-spacing: -0.025em;
+  }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   覆盖层: 旧版 dark theme 残留的 utility 类在浅色玻璃下的等价处理
+   原代码中常见 hover:bg-white/5, bg-bg-2/50, hover:bg-danger/10 等深色模式专用。
+   这些规则保证它们在新主题下仍有恰当的视觉反馈。
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* hover white-mask → 在浅底上换为墨绿色蒙版 (微弱 hover 反馈) */
+.hover\:bg-white\/2:hover { background-color: rgba(15, 36, 25, 0.025) !important; }
+.hover\:bg-white\/3:hover { background-color: rgba(15, 36, 25, 0.04) !important; }
+.hover\:bg-white\/5:hover { background-color: rgba(15, 36, 25, 0.05) !important; }
+.bg-white\/5             { background-color: rgba(15, 36, 25, 0.05) !important; }
+.hover\:bg-white\/2      { background-color: rgba(15, 36, 25, 0.025) !important; }
+
+/* danger soft hover */
+.hover\:bg-danger\/10:hover { background-color: rgba(220, 38, 38, 0.10) !important; }
+.bg-danger\/15           { background-color: rgba(220, 38, 38, 0.12) !important; }
+
+/* 旧 bg-bg-N 深色块 → 玻璃半透明白 */
+.bg-bg-0       { background-color: rgba(255, 255, 255, 0.55) !important; }
+.bg-bg-2       { background-color: rgba(255, 255, 255, 0.60) !important; }
+.bg-bg-2\/50   { background-color: rgba(255, 255, 255, 0.50) !important; }
+.bg-bg-2\/60   { background-color: rgba(255, 255, 255, 0.60) !important; }
+.bg-bg-2\/80   { background-color: rgba(255, 255, 255, 0.78) !important; }
+.bg-bg-3       { background-color: rgba(255, 255, 255, 0.70) !important; }
+.bg-bg-0\/80   { background-color: rgba(15, 36, 25, 0.35) !important; } /* modal 遮罩用 */
+
+/* 旧 bg-teal-300 / bg-teal-500 (按钮等) — 在浅色下我们已用 .btn-primary 渐变, 偶尔单独使用时给一个稳妥色 */
+.bg-teal-300   { background-color: var(--brand) !important; }
+.bg-teal-500   { background-color: var(--brand) !important; }
+
+/* 旧 text-teal-300 link 色 - 浅色下需要更深 */
+.text-teal-300 { color: var(--brand-deep) !important; }
+.text-teal-200 { color: var(--teal-600) !important; }
+.hover\:text-teal-200:hover { color: var(--teal-700) !important; }
+
+/* 警告框边框/底色 (DEV 验证码提示用) */
+.border-warn\/40 { border-color: rgba(217, 119, 6, 0.40) !important; }
+.bg-warn\/10     { background-color: rgba(217, 119, 6, 0.10) !important; }
+.bg-warn\/5      { background-color: rgba(217, 119, 6, 0.06) !important; }
+
+/* 旧 border-line 在玻璃 surface 内做分隔线时, 用更深一点的描边可见性更好 */
+.border-line   { border-color: var(--line-strong) !important; }
+.border-line-strong { border-color: var(--line-strong) !important; }
+.border-line\/60 { border-color: rgba(15, 36, 25, 0.10) !important; }
+.bg-line       { background-color: var(--line-strong) !important; }
 
 /* ── 滚动条 ────────────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+  scrollbar-color: rgba(15, 36, 25, 0.20) transparent;
 }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 36, 25, 0.18);
   border-radius: 4px;
 }
-*::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+*::-webkit-scrollbar-thumb:hover { background: rgba(15, 36, 25, 0.32); }
 *::-webkit-scrollbar-track { background: transparent; }
 
-/* ── 页面进入动画 ────────────────────────────────────────────
-   极轻量, 只有 transform + opacity, 不影响低端设备. */
+/* ── 页面进入动画 ───────────────────────────────────────────── */
 .page-enter {
   animation: page-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -514,7 +668,6 @@
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* 用户偏好减弱动效 — 尊重无障碍 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

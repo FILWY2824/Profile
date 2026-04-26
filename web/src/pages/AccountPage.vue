@@ -2,20 +2,20 @@
   <div>
     <!-- 文头 -->
     <header class="mb-8">
-      <h1 class="h-page">账户中心</h1>
+      <h1 class="h-page">账户中心<span class="text-teal-300">.</span></h1>
       <p class="text-fg-dim mt-2 text-[15px]">管理个人信息、密码与已授权应用</p>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-6">
       <!-- 左侧 sidebar -->
-      <aside class="lg:sticky lg:top-20 lg:self-start">
+      <aside class="lg:sticky lg:top-24 lg:self-start">
         <!-- 移动端横向 tabs -->
         <nav class="lg:hidden flex gap-1 overflow-x-auto pb-2 -mx-4 px-4 mb-4 border-b border-line">
           <button v-for="t in tabs" :key="t.id"
                   @click="active = t.id"
                   :class="[
                     'flex-shrink-0 px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors',
-                    active === t.id ? 'bg-teal-300 text-[#062521] font-medium' : 'text-fg-dim hover:text-fg hover:bg-white/5'
+                    active === t.id ? 'tab-mobile-active' : 'text-fg-dim'
                   ]">
             {{ t.label }}
           </button>
@@ -38,9 +38,7 @@
           <h2 class="h-section mb-6">个人资料</h2>
           <div v-if="profile" class="space-y-5">
             <div class="flex items-center gap-4 pb-5 border-b border-line">
-              <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-300 to-teal-500 text-[#062521] font-bold text-2xl">
-                {{ initial }}
-              </span>
+              <span class="profile-avatar">{{ initial }}</span>
               <div class="flex-1 min-w-0">
                 <div class="font-mono text-sm text-fg truncate">{{ profile.email }}</div>
                 <div class="text-xs text-fg-mute mt-1">{{ roleLabel }}</div>
@@ -83,7 +81,7 @@
                 发送验证码
               </button>
             </div>
-            <div v-if="devCode" class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs">
+            <div v-if="devCode" class="dev-banner">
               <span class="text-warn font-mono font-semibold">DEV ·</span>
               <span class="text-fg ml-1 font-mono">{{ devCode }}</span>
             </div>
@@ -113,7 +111,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="l in logins" :key="l.id" class="border-b border-line/60 hover:bg-white/2">
+                <tr v-for="l in logins" :key="l.id" class="data-row">
                   <td class="py-2.5 px-2 font-mono text-xs text-fg-dim">{{ formatTime(l.timestamp) }}</td>
                   <td class="py-2.5 px-2 font-mono text-xs text-fg">{{ l.ip }}</td>
                   <td class="py-2.5 px-2 text-xs text-fg-dim truncate max-w-xs">{{ l.userAgent }}</td>
@@ -136,8 +134,7 @@
           </div>
           <div v-if="grants.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
           <ul v-else class="space-y-3">
-            <li v-for="g in grants" :key="g.id"
-                class="flex items-center justify-between gap-4 p-4 rounded-xl border border-line hover:border-line-strong transition-colors">
+            <li v-for="g in grants" :key="g.id" class="grant-item">
               <div class="min-w-0 flex-1">
                 <div class="h-sub truncate">{{ g.clientName }}</div>
                 <div class="text-xs text-fg-mute mt-1 truncate font-mono">
@@ -160,7 +157,7 @@
           <div v-if="activity.length === 0" class="text-center py-12 text-fg-dim text-sm">暂无</div>
           <ul v-else class="space-y-1">
             <li v-for="a in activity" :key="a.id"
-                class="flex items-baseline gap-4 py-2.5 border-b border-line/60 last:border-0 text-sm">
+                class="flex items-baseline gap-4 py-2.5 border-b border-line last:border-0 text-sm">
               <span class="font-mono text-xs text-fg-mute w-32 flex-shrink-0">{{ formatTime(a.timestamp) }}</span>
               <span class="text-teal-300">·</span>
               <span class="text-fg leading-relaxed">{{ a.detail || a.action }}</span>
@@ -256,3 +253,56 @@ watch(active, (t) => {
 
 onMounted(loadProfile);
 </script>
+
+<style scoped>
+.profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #34D399, #10B981 55%, #047857);
+  color: white;
+  font-weight: 700;
+  font-size: 24px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 8px 18px -6px rgba(16, 185, 129, 0.5);
+}
+.tab-mobile-active {
+  background: linear-gradient(135deg, #34D399, #10B981 60%, #047857);
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 4px 10px -3px rgba(16, 185, 129, 0.45);
+}
+.dev-banner {
+  border-radius: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.40);
+  background-color: rgba(254, 243, 199, 0.6);
+  padding: 12px;
+  font-size: 12px;
+}
+.data-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.data-row:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+.grant-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  transition: background-color 0.14s, border-color 0.14s;
+}
+.grant-item:hover {
+  background-color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.95);
+}
+</style>

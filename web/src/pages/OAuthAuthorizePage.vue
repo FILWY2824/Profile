@@ -4,16 +4,17 @@
       <span class="sigil-lg"></span>
     </div>
 
-    <div class="surface-glass shadow-pop p-8 sm:p-10">
+    <div class="surface-glass p-8 sm:p-10">
       <div v-if="loading" class="py-10 text-center">
         <div class="inline-flex items-center gap-3 text-fg-dim text-sm">
-          <span class="inline-block h-2 w-2 rounded-full bg-teal-300 animate-shine"></span>
+          <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine"></span>
           <span>加载授权信息</span>
         </div>
       </div>
 
       <div v-else-if="error" class="py-6 text-center">
-        <div class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-danger/15 text-danger mb-3">
+        <div class="inline-flex h-12 w-12 items-center justify-center rounded-full mb-3"
+             style="background-color: rgba(220, 38, 38, 0.12); color: var(--danger);">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -24,16 +25,16 @@
 
       <div v-else-if="info">
         <div class="text-center mb-6">
-          <h1 class="h-page text-2xl mb-1.5">授权请求</h1>
+          <h1 class="h-page text-2xl mb-1.5">授权请求<span class="text-teal-300">.</span></h1>
           <p class="text-fg-dim text-sm">第三方应用希望访问你的账号</p>
         </div>
 
         <!-- 应用方信息 -->
         <div class="flex items-center gap-4 mb-6 pb-6 border-b border-line">
-          <div v-if="info.client.logoUrl" class="h-14 w-14 rounded-2xl border border-line overflow-hidden flex-shrink-0">
+          <div v-if="info.client.logoUrl" class="h-14 w-14 rounded-2xl border border-line overflow-hidden flex-shrink-0 bg-white">
             <img :src="info.client.logoUrl" class="h-full w-full object-cover" alt="" />
           </div>
-          <div v-else class="h-14 w-14 rounded-2xl bg-gradient-to-br from-sky-400 to-sky-500 text-white flex items-center justify-center font-bold text-2xl flex-shrink-0">
+          <div v-else class="client-fallback">
             {{ (info.client.name || '?').charAt(0).toUpperCase() }}
           </div>
           <div class="flex-1 min-w-0">
@@ -50,7 +51,7 @@
         </p>
 
         <!-- 权限列表 -->
-        <div class="text-xs text-fg-dim mb-3 font-medium">将获得以下权限</div>
+        <div class="text-xs text-fg-dim mb-3 font-semibold">将获得以下权限</div>
         <ul class="space-y-2 mb-6 surface-soft p-3.5">
           <li v-for="s in (info.requestedScopes || [])" :key="s"
               class="flex items-baseline gap-3 text-sm">
@@ -140,3 +141,22 @@ async function decide(allow) {
   }
 }
 </script>
+
+<style scoped>
+.client-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #06B6D4, #0891B2 60%, #0E7490);
+  color: white;
+  font-weight: 700;
+  font-size: 24px;
+  flex-shrink: 0;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 8px 18px -6px rgba(6, 182, 212, 0.5);
+}
+</style>

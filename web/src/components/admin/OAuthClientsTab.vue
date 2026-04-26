@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h1 class="h-page">OAuth 客户端</h1>
+        <h1 class="h-page">OAuth 客户端<span class="text-teal-300">.</span></h1>
         <p class="text-fg-dim text-sm mt-1.5">{{ items.length }} 个已注册客户端</p>
       </div>
       <button @click="openCreate" class="btn btn-primary">+ 新建客户端</button>
@@ -12,17 +12,17 @@
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-line bg-bg-2/50">
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">名称</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">Client ID</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">最低等级</th>
-              <th class="px-4 py-3 text-left text-xs text-fg-mute font-medium uppercase tracking-wider">状态</th>
+            <tr class="admin-thead">
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">名称</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">Client ID</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">最低等级</th>
+              <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">状态</th>
               <th class="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in items" :key="c.id" class="border-b border-line/60 hover:bg-white/3 transition-colors">
-              <td class="px-4 py-3 font-medium text-fg">{{ c.name }}</td>
+            <tr v-for="c in items" :key="c.id" class="admin-row">
+              <td class="px-4 py-3 font-semibold text-fg">{{ c.name }}</td>
               <td class="px-4 py-3 font-mono text-xs text-fg-dim">{{ c.clientId }}</td>
               <td class="px-4 py-3 text-xs text-fg-dim">{{ levelLabel(c.minLevel) }}</td>
               <td class="px-4 py-3"><span :class="c.status === 'active' ? 'badge-emerald' : 'badge-slate'">{{ statusLabel(c.status) }}</span></td>
@@ -86,7 +86,7 @@
 
     <Modal v-model="secretOpen" title="客户端密钥 (仅展示一次)">
       <div class="space-y-4">
-        <div class="text-sm rounded-lg border border-warn/40 bg-warn/10 p-3 text-warn">
+        <div class="dev-banner">
           请立即复制并妥善保管。关闭后无法再次查看。
         </div>
         <div>
@@ -182,3 +182,26 @@ function copySecret() {
 
 onMounted(load);
 </script>
+
+<style scoped>
+.admin-thead {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.10);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row {
+  border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+  transition: background-color 0.14s;
+}
+.admin-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.dev-banner {
+  font-size: 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.40);
+  background-color: rgba(254, 243, 199, 0.6);
+  padding: 12px 14px;
+  color: #92400E;
+  font-weight: 500;
+}
+</style>
