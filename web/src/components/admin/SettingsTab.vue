@@ -159,6 +159,8 @@ async function load() {
     const r = await api.get("/admin/settings");
     items.value = r.items || [];
     resetAll();
+  } catch (e) {
+    errToast(e.message);
   } finally {
     loading.value = false;
   }

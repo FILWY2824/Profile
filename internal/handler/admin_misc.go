@@ -84,7 +84,7 @@ func (h *AdminSettingsHandler) update(c echo.Context) error {
 		keysWritten = append(keysWritten, u.Key)
 
 		switch u.Key {
-		case "TURNSTILE_ENABLED", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY":
+		case "TURNSTILE_ENABLED", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", "TURNSTILE_SEND_REMOTEIP":
 			touchTurnstile = true
 		case "RESEND_API_KEY", "RESEND_FROM":
 			touchEmail = true
@@ -96,6 +96,7 @@ func (h *AdminSettingsHandler) update(c echo.Context) error {
 		h.Turnstile.Reload(
 			h.Settings.Get("TURNSTILE_SECRET_KEY"),
 			h.Settings.GetBool("TURNSTILE_ENABLED"),
+			h.Settings.GetBool("TURNSTILE_SEND_REMOTEIP"),
 		)
 	}
 	if touchEmail && h.Email != nil {
@@ -158,24 +159,26 @@ func (h *AdminAuditHandler) Register(g *echo.Group) {
 }
 
 func (h *AdminAuditHandler) loginHistory(c echo.Context) error {
-	p := readPagination(c, 100, 1000)
+	p := readPagination(c, 10, 1000)
 	rows, err := h.LoginHistory.ListAll(p.Limit, p.Offset)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
+	total, _ := h.LoginHistory.Count()
 	return c.JSON(http.StatusOK, map[string]any{
-		"items": rows, "limit": p.Limit, "offset": p.Offset,
+		"items": rows, "total": total, "limit": p.Limit, "offset": p.Offset,
 	})
 }
 
 func (h *AdminAuditHandler) activityLog(c echo.Context) error {
-	p := readPagination(c, 100, 1000)
+	p := readPagination(c, 10, 1000)
 	rows, err := h.ActivityLog.ListAll(p.Limit, p.Offset)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
+	total, _ := h.ActivityLog.Count()
 	return c.JSON(http.StatusOK, map[string]any{
-		"items": rows, "limit": p.Limit, "offset": p.Offset,
+		"items": rows, "total": total, "limit": p.Limit, "offset": p.Offset,
 	})
 }
 

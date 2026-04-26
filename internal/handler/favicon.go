@@ -56,7 +56,11 @@ func NewFaviconHandler(cards *repository.CardRepo, favicons *repository.FaviconR
 }
 
 func (h *FaviconHandler) RegisterPublic(g *echo.Group) {
+	// /favicons/image?origin=... 仍然保留,但是是为后台("图标缓存"页面)
+	// 服务的;前台主页一律使用 /cards/:id/icon,这样前端永远不会拿到
+	// 卡片的 origin。
 	g.GET("/favicons/image", h.image)
+	g.GET("/cards/:id/icon", h.cardIcon)
 }
 
 func (h *FaviconHandler) RegisterAdmin(g *echo.Group) {
@@ -76,6 +80,39 @@ func canonicalOrigin(raw string) string {
 	scheme := strings.ToLower(u.Scheme)
 	host := strings.ToLower(u.Host)
 	return scheme + "://" + host
+}
+
+// cardIcon 通过卡片 ID 返回 favicon。前端只需要知道 cardId,服务器侧
+// 把 ID 解析成 URL,再解析出 origin,再走原有的 favicon 缓存通路。
+// 这样,前端 HTML 与 network 面板永远不会出现卡片真实 host。
+//
+// 没有权限校验:卡片图标本身只是一张图,不涉及隐私;就算非授权用户
+// 看到了也没有任何攻击意义(用户的需求里也明确说"图标可以看")。
+// 所以这里不做 canSee — 否则未登录用户的主页会满屏图标占位失败。
+func (h *FaviconHandler) cardIcon(c echo.Context) error {
+	id := c.Param("id")
+	card, err := h.Cards.FindByID(id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "卡片不存在")
+	}
+	origin := canonicalOrigin(card.URL)
+	if origin == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "卡片 URL 不合法")
+	}
+
+	if cached, err := h.Favicons.Get(origin); err == nil && cached.DataURL != "" {
+		return h.writeImageFromDataURL(c, cached.DataURL, cached.ContentType)
+	}
+
+	if err := h.fetchAndCache(c.Request().Context(), origin); err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "获取 favicon 失败")
+	}
+
+	cached, err := h.Favicons.Get(origin)
+	if err != nil || cached.DataURL == "" {
+		return echo.NewHTTPError(http.StatusBadGateway, "获取 favicon 失败")
+	}
+	return h.writeImageFromDataURL(c, cached.DataURL, cached.ContentType)
 }
 
 // image 公开读端点。

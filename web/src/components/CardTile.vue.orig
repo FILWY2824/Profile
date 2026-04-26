@@ -49,7 +49,7 @@
 
 <script setup>
 import { computed, ref } from "vue";
-import { errToast } from "../toast.js";
+import { showToast } from "../toast.js";
 
 const props = defineProps({ card: { type: Object, required: true } });
 const iconFailed = ref(false);
@@ -68,7 +68,7 @@ const initial = computed(() => (props.card.title || "?").charAt(0).toUpperCase()
 function onClick(event) {
   if (props.card.locked) {
     event.preventDefault();
-    errToast(props.card.lockReason || "无访问权限");
+    showToast(props.card.lockReason || "无访问权限", "warn");
   }
 }
 </script>

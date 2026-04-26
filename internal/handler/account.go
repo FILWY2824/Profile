@@ -14,10 +14,14 @@
 // the attacker needs the email account too. The code is bound to the
 // user's email at the time it's issued — changing email beforehand doesn't
 // help an attacker.
+//
+// 安全策略 (2026-04):邮件服务未配置时,/password/send-code 直接 503,
+// 不再 stdout 回显验证码。
 package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -106,13 +110,18 @@ func (h *AccountHandler) updateProfile(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "更新失败")
 	}
 	_ = h.ActivityLog.Record(auditFromCtx(c, "account.profile_update", "更新个人资料", ""))
-	return c.JSON(http.StatusOK, map[string]any{"success": true})
+	return c.JSON(http.StatusOK, map[string]any{"success": true, "message": "个人资料已更新"})
 }
 
 // passwordSendCode emails a verification code that authorises a follow-up
 // password change. Rate-limited per user.
 func (h *AccountHandler) passwordSendCode(c echo.Context) error {
 	u := middleware.User(c)
+
+	// 邮件服务未配置时,直接告知用户;不再 stdout 回显。
+	if !h.Email.Configured() {
+		return emailNotConfigured()
+	}
 
 	// Hard cap by user — generous for legit retries, tight enough to limit
 	// abuse if a session cookie leaks.
@@ -124,7 +133,7 @@ func (h *AccountHandler) passwordSendCode(c echo.Context) error {
 	expiry := time.Duration(h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30)) * time.Minute
 	_, err := h.VCodes.Issue(repository.IssueInput{
 		Email: u.Email, Code: code, Type: model.VCodeChangePassword,
-		IP: ratelimit.ClientIP(c.Request()),
+		IP:        ratelimit.ClientIP(c.Request()),
 		ExpiresAt: time.Now().Add(expiry),
 	})
 	if err != nil {
@@ -135,15 +144,18 @@ func (h *AccountHandler) passwordSendCode(c echo.Context) error {
 		h.Settings.Get("SITE_NAME"), "修改密码", code,
 		h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30),
 	)
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
 	defer cancel()
-	_ = h.Email.Send(ctx, u.Email, subject, htmlBody, textBody)
-
-	body := map[string]any{"success": true, "message": "验证码已发送至您的邮箱"}
-	if h.Cfg != nil && !h.Cfg.IsProduction() {
-		body["devCode"] = code
+	if err := h.Email.Send(ctx, u.Email, subject, htmlBody, textBody); err != nil {
+		if errors.Is(err, email.ErrNotConfigured) {
+			return emailNotConfigured()
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, "邮件发送失败,请稍后重试")
 	}
-	return c.JSON(http.StatusOK, body)
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true, "message": "验证码已发送至您的邮箱",
+	})
 }
 
 func (h *AccountHandler) passwordChange(c echo.Context) error {
@@ -202,29 +214,40 @@ func (h *AccountHandler) passwordChange(c echo.Context) error {
 	})
 }
 
-// loginHistory shows the current user's recent logins. Capped at 50 by
-// default — that's enough for the "recent activity" UX without dumping
-// the whole history at once.
+// loginHistory returns the current user's login records, paged.
+// 修改:支持 limit/offset 和返回 total,前端可做翻页。
 func (h *AccountHandler) loginHistory(c echo.Context) error {
 	u := middleware.User(c)
-	p := readPagination(c, 50, 200)
-	rows, err := h.LoginHistory.ListByUser(u.ID, p.Limit)
+	p := readPagination(c, 10, 200)
+	rows, err := h.LoginHistory.ListByUserPaged(u.ID, p.Limit, p.Offset)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
-	return c.JSON(http.StatusOK, map[string]any{"items": rows})
+	total, _ := h.LoginHistory.CountByUser(u.ID)
+	return c.JSON(http.StatusOK, map[string]any{
+		"items":  rows,
+		"total":  total,
+		"limit":  p.Limit,
+		"offset": p.Offset,
+	})
 }
 
 func (h *AccountHandler) activity(c echo.Context) error {
 	u := middleware.User(c)
-	cap := h.Settings.GetInt("USER_ACTIVITY_LOG_CAP", 30)
-	p := readPagination(c, cap, cap)
+	cap := h.Settings.GetInt("USER_ACTIVITY_LOG_CAP", 100)
+	p := readPagination(c, 10, cap)
 	if cap > 0 && p.Limit > cap {
 		p.Limit = cap
 	}
-	rows, err := h.ActivityLog.ListByUser(u.ID, p.Limit)
+	rows, err := h.ActivityLog.ListByUserPaged(u.ID, p.Limit, p.Offset)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
-	return c.JSON(http.StatusOK, map[string]any{"items": rows})
+	total, _ := h.ActivityLog.CountByUser(u.ID)
+	return c.JSON(http.StatusOK, map[string]any{
+		"items":  rows,
+		"total":  total,
+		"limit":  p.Limit,
+		"offset": p.Offset,
+	})
 }

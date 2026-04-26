@@ -28,10 +28,6 @@
       </form>
 
       <form v-else @submit.prevent="onReset" class="space-y-4">
-        <div v-if="devCode" class="dev-banner">
-          <span class="text-warn font-mono font-semibold">DEV ·</span>
-          <span class="text-fg ml-1">验证码: <span class="text-teal-300 font-mono font-semibold">{{ devCode }}</span></span>
-        </div>
         <div>
           <label class="label">六位验证码</label>
           <input v-model="code" required maxlength="6" class="input input-mono text-center text-2xl font-semibold tracking-[0.5em] py-3"
@@ -39,7 +35,7 @@
         </div>
         <div>
           <label class="label">新密码 (至少 8 字符)</label>
-          <input v-model="newPassword" type="password" required minlength="8" class="input" placeholder="••••••••" />
+          <PasswordInput v-model="newPassword" required :minlength="8" autocomplete="new-password" placeholder="••••••••" />
         </div>
         <div class="pt-2 space-y-2.5">
           <button :disabled="busy" class="btn btn-primary w-full">
@@ -64,23 +60,30 @@ import { ref, onMounted } from "vue";
 import { api } from "../api.js";
 import { navigate } from "../router.js";
 import { okToast, errToast } from "../toast.js";
+import PasswordInput from "../components/PasswordInput.vue";
 
 const step = ref(1);
 const email = ref("");
 const code = ref("");
 const newPassword = ref("");
 const busy = ref(false);
-const devCode = ref("");
 const turnstileSiteKey = ref("");
+
+const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
 
 onMounted(async () => {
   try {
     const cfg = await api.get("/auth/turnstile-config");
     if (cfg.enabled && cfg.siteKey) {
       turnstileSiteKey.value = cfg.siteKey;
-      const s = document.createElement("script");
-      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-      s.async = true; s.defer = true; document.head.appendChild(s);
+      if (!document.querySelector(`script[src="${TURNSTILE_SCRIPT}"]`)) {
+        const s = document.createElement("script");
+        s.src = TURNSTILE_SCRIPT;
+        s.async = true; s.defer = true;
+        document.head.appendChild(s);
+      } else if (window.turnstile) {
+        setTimeout(() => window.turnstile.render?.(".cf-turnstile"), 0);
+      }
     }
   } catch {}
 });
@@ -89,12 +92,11 @@ async function onSend() {
   busy.value = true;
   try {
     const tsToken = window.turnstile?.getResponse?.() || "";
-    const r = await api.post("/auth/forgot-password", {
+    await api.post("/auth/forgot-password", {
       email: email.value, turnstileToken: tsToken,
     });
-    devCode.value = r.devCode || "";
     step.value = 2;
-    okToast("已发送 (若该邮箱已注册)");
+    okToast("若该邮箱已注册,验证码已发送");
   } catch (e) {
     errToast(e.message);
     if (window.turnstile) window.turnstile.reset();
@@ -109,7 +111,7 @@ async function onReset() {
     await api.post("/auth/reset-password", {
       email: email.value, code: code.value, newPassword: newPassword.value,
     });
-    okToast("密码已重置, 请重新登录");
+    okToast("密码已重置,请重新登录");
     navigate("/login");
   } catch (e) {
     errToast(e.message);
@@ -118,13 +120,3 @@ async function onReset() {
   }
 }
 </script>
-
-<style scoped>
-.dev-banner {
-  border-radius: 12px;
-  border: 1px solid rgba(217, 119, 6, 0.40);
-  background-color: rgba(254, 243, 199, 0.6);
-  padding: 12px;
-  font-size: 12px;
-}
-</style>

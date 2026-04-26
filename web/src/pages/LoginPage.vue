@@ -10,22 +10,21 @@
     <div class="surface-glass p-8 sm:p-10">
       <div class="text-center mb-7">
         <h1 class="h-page text-3xl mb-1.5">欢迎回来<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm">登录到你的工具面板</p>
+        <p class="text-fg-dim text-sm">登录到你的账户</p>
       </div>
 
       <form @submit.prevent="onSubmit" class="space-y-4">
         <div>
           <label class="label">邮箱地址</label>
           <input v-model="email" type="email" required autofocus class="input"
-                 placeholder="you@example.com" />
+                 placeholder="you@example.com" autocomplete="username" />
         </div>
         <div>
           <div class="flex items-baseline justify-between mb-1.5">
             <label class="label !mb-0">密码</label>
             <a href="#/forgot-password" class="text-xs text-teal-300 hover:text-teal-200 transition-colors">忘记密码?</a>
           </div>
-          <input v-model="password" type="password" required class="input"
-                 placeholder="••••••••" />
+          <PasswordInput v-model="password" required autocomplete="current-password" placeholder="••••••••" />
         </div>
 
         <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
@@ -59,22 +58,30 @@ import { api } from "../api.js";
 import { loadSession } from "../session.js";
 import { navigate } from "../router.js";
 import { errToast, okToast } from "../toast.js";
+import PasswordInput from "../components/PasswordInput.vue";
 
 const email = ref("");
 const password = ref("");
 const busy = ref(false);
 const turnstileSiteKey = ref("");
 
+const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+
 onMounted(async () => {
   try {
     const cfg = await api.get("/auth/turnstile-config");
     if (cfg.enabled && cfg.siteKey) {
       turnstileSiteKey.value = cfg.siteKey;
-      const s = document.createElement("script");
-      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-      s.async = true;
-      s.defer = true;
-      document.head.appendChild(s);
+      // 防止 SPA 内反复挂载时重复加载脚本
+      if (!document.querySelector(`script[src="${TURNSTILE_SCRIPT}"]`)) {
+        const s = document.createElement("script");
+        s.src = TURNSTILE_SCRIPT;
+        s.async = true;
+        s.defer = true;
+        document.head.appendChild(s);
+      } else if (window.turnstile) {
+        setTimeout(() => window.turnstile.render?.(".cf-turnstile"), 0);
+      }
     }
   } catch {}
 });

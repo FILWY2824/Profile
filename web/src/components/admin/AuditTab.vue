@@ -8,7 +8,7 @@
     <!-- 子 Tab 切换 -->
     <div class="audit-subtabs">
       <button v-for="t in tabs" :key="t.id"
-              @click="active = t.id"
+              @click="setActive(t.id)"
               :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
         {{ t.label }}
       </button>
@@ -32,10 +32,10 @@
               <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无登录记录</td>
             </tr>
             <tr v-for="r in loginRows" :key="r.id" class="admin-row">
-              <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ formatDateTime(r.timestamp) }}</td>
+              <td class="px-4 py-3 text-xs text-fg-dim font-mono whitespace-nowrap">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.email }}</td>
-              <td class="px-4 py-3 text-xs font-mono text-fg-dim">{{ r.ip }}</td>
-              <td class="px-4 py-3">
+              <td class="px-4 py-3 text-xs font-mono text-fg-dim whitespace-nowrap">{{ r.ip }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">
                 <span :class="r.success ? 'badge-emerald' : 'badge-red'">
                   {{ r.success ? '成功' : '失败' }}
                 </span>
@@ -44,6 +44,9 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="loginTotal > 0" class="px-4 py-2">
+        <Pagination :total="loginTotal" v-model:current-page="loginPage" :page-size="10" @page-change="loadLogin" />
       </div>
     </div>
 
@@ -65,41 +68,68 @@
               <td colspan="5" class="px-4 py-12 text-center text-fg-dim text-sm">暂无活动记录</td>
             </tr>
             <tr v-for="r in activityRows" :key="r.id" class="admin-row">
-              <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ formatDateTime(r.timestamp) }}</td>
+              <td class="px-4 py-3 text-xs text-fg-dim font-mono whitespace-nowrap">{{ formatDateTime(r.timestamp) }}</td>
               <td class="px-4 py-3 text-xs font-mono text-fg">{{ r.username || r.email || '—' }}</td>
-              <td class="px-4 py-3"><span class="badge-slate">{{ r.action }}</span></td>
+              <td class="px-4 py-3 whitespace-nowrap"><span class="badge-slate">{{ r.action }}</span></td>
               <td class="px-4 py-3 text-xs text-fg">{{ r.detail }}</td>
-              <td class="px-4 py-3 text-xs font-mono text-fg-dim">{{ r.ip }}</td>
+              <td class="px-4 py-3 text-xs font-mono text-fg-dim whitespace-nowrap">{{ r.ip }}</td>
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="activityTotal > 0" class="px-4 py-2">
+        <Pagination :total="activityTotal" v-model:current-page="activityPage" :page-size="10" @page-change="loadActivity" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { api } from "../../api.js";
+import { errToast } from "../../toast.js";
 import { formatDateTime } from "../../format.js";
+import Pagination from "../Pagination.vue";
 
 const tabs = [{ id: "login", label: "登录历史" }, { id: "activity", label: "活动日志" }];
 const active = ref("login");
-const loginRows = ref([]);
-const activityRows = ref([]);
 
-async function load() {
-  if (active.value === "login") {
-    const r = await api.get("/admin/login-history");
+const loginRows = ref([]);
+const loginTotal = ref(0);
+const loginPage = ref(1);
+
+const activityRows = ref([]);
+const activityTotal = ref(0);
+const activityPage = ref(1);
+
+async function loadLogin() {
+  try {
+    const r = await api.get(`/admin/login-history?limit=10&offset=${(loginPage.value - 1) * 10}`);
     loginRows.value = r.items || [];
-  } else {
-    const r = await api.get("/admin/activity-log");
+    loginTotal.value = r.total || 0;
+  } catch (e) { errToast(e.message); }
+}
+
+async function loadActivity() {
+  try {
+    const r = await api.get(`/admin/activity-log?limit=10&offset=${(activityPage.value - 1) * 10}`);
     activityRows.value = r.items || [];
+    activityTotal.value = r.total || 0;
+  } catch (e) { errToast(e.message); }
+}
+
+function setActive(t) {
+  active.value = t;
+  if (t === "login") {
+    loginPage.value = 1;
+    loadLogin();
+  } else {
+    activityPage.value = 1;
+    loadActivity();
   }
 }
 
-watch(active, load);
-onMounted(load);
+onMounted(loadLogin);
 </script>
 
 <style scoped>

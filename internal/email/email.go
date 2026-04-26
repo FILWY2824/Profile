@@ -1,7 +1,11 @@
 // Package email sends transactional mail via Resend's HTTP API.
 //
-// Sender 是一个 wrapper,内部持有当前后端实现(ResendSender 或 ConsoleSender),
-// 允许 admin 在管理后台保存 RESEND_API_KEY/RESEND_FROM 后即时生效。
+// 安全策略修改 (2026-04):
+//   - 移除"开发模式 stdout 回显验证码"的旧行为。任何环境下,如果
+//     RESEND_API_KEY 未配置,Send 都返回 ErrNotConfigured,调用方
+//     必须把这个错误转成对终端用户可见的 503 + 提示文案
+//     "服务器未配置邮件发送服务,请联系管理员"。
+//   - 验证码绝对不会被回显到 HTTP 响应体或服务器日志中。
 package email
 
 import (
@@ -17,6 +21,11 @@ import (
 	"sync"
 	"time"
 )
+
+// ErrNotConfigured 表示当前没有可用的邮件发送通道(RESEND_API_KEY 留空)。
+// 所有依赖发送邮件验证码的 handler 收到这个错误时,必须直接告诉用户:
+// 邮件服务尚未配置,请联系管理员;不要静默吞掉。
+var ErrNotConfigured = errors.New("email sender not configured")
 
 // Sender 对外暴露的接口。Send 调用线程安全,Reload 也线程安全。
 type Sender struct {
@@ -42,14 +51,15 @@ func (s *Sender) Reload(apiKey, from string) {
 	s.mu.Unlock()
 }
 
-// DevMode 报告当前是否处于开发模式(API Key 留空)。开发模式下 Send 只打日志。
-func (s *Sender) DevMode() bool {
+// Configured 报告当前是否已配置 API Key + From。
+func (s *Sender) Configured() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.apiKey == ""
+	return s.apiKey != "" && s.from != ""
 }
 
-// Send 发送邮件。dev 模式打 stdout,生产用 Resend HTTP。
+// Send 发送邮件。如果 RESEND_API_KEY 未配置,直接返回 ErrNotConfigured —
+// 不再回退到 stdout 打日志,也不再"静默成功"。
 func (s *Sender) Send(ctx context.Context, to, subject, htmlBody, textBody string) error {
 	s.mu.RLock()
 	apiKey := s.apiKey
@@ -58,14 +68,8 @@ func (s *Sender) Send(ctx context.Context, to, subject, htmlBody, textBody strin
 	s.mu.RUnlock()
 
 	if apiKey == "" {
-		fmt.Printf("\n--- [DEV EMAIL] ----------------------------------------\n")
-		fmt.Printf("To:      %s\n", to)
-		fmt.Printf("Subject: %s\n", subject)
-		fmt.Printf("%s\n", textBody)
-		fmt.Printf("--------------------------------------------------------\n\n")
-		return nil
+		return ErrNotConfigured
 	}
-
 	if from == "" {
 		return errors.New("RESEND_FROM 未设置,无法发件")
 	}
@@ -106,7 +110,7 @@ type resendRequest struct {
 
 func ComposeVerificationCode(siteName, action, code string, expiryMin int) (subject, htmlBody, textBody string) {
 	if siteName == "" {
-		siteName = "栖枢"
+		siteName = "Qi Shu"
 	}
 	subject = "[" + siteName + "] 验证码: " + code
 	textBody = fmt.Sprintf(`%s

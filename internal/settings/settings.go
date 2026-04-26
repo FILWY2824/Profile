@@ -35,18 +35,22 @@ type ManagedKey struct {
 // migration.
 var Managed = []ManagedKey{
 	// ── general ──
-	{Key: "SITE_NAME", Category: "general", Default: "栖枢",
+	{Key: "SITE_NAME", Category: "general", Default: "Qi Shu",
 		Description: "平台名称(显示在页面标题、邮件内)"},
-	{Key: "USER_ACTIVITY_LOG_CAP", Category: "general", Default: "30",
-		Description: "普通用户能查看的最近活动日志条数上限。-1 表示不限。"},
+	{Key: "SITE_DESCRIPTION", Category: "general", Default: "",
+		Description: "平台简介(显示在主页副标题处)"},
+	{Key: "USER_ACTIVITY_LOG_CAP", Category: "general", Default: "100",
+		Description: "普通用户能查看的活动日志条数上限。-1 表示不限。"},
 
 	// ── auth ──
-	{Key: "SESSION_EXPIRY_DAYS", Category: "auth", Default: "7",
+	{Key: "SESSION_EXPIRY_DAYS", Category: "auth", Default: "1",
 		Description: "登录会话有效期(天)。只对新登录生效,区间 1-365。"},
+	{Key: "SESSION_RESUME_GAP_MINUTES", Category: "auth", Default: "30",
+		Description: "会话恢复阈值(分钟)。距上次活动超过此值的新请求会算作一次新登录,写入登录历史。0 表示禁用。"},
 
 	// ── email ──
 	{Key: "RESEND_API_KEY", Category: "email", Sensitive: true, Default: "",
-		Description: "Resend API Key。留空进入开发模式:验证码直接回显到接口响应。"},
+		Description: "Resend API Key。留空则用户的发送验证码请求会得到“服务器未配置邮件发送服务,请联系管理员”提示。"},
 	{Key: "RESEND_FROM", Category: "email", Default: "",
 		Description: "Resend 发件人地址(如 noreply@example.com)"},
 
@@ -93,14 +97,16 @@ var Managed = []ManagedKey{
 		Description: "Cloudflare Turnstile Site Key(前端使用,公开)"},
 	{Key: "TURNSTILE_SECRET_KEY", Category: "security", Sensitive: true, Default: "",
 		Description: "Cloudflare Turnstile Secret Key(后端使用)"},
+	{Key: "TURNSTILE_SEND_REMOTEIP", Category: "security", Default: "0",
+		Description: "Turnstile 校验时是否带上 remoteip。家宽/CGNAT/IP 漂移环境下建议关闭(0),否则 Cloudflare 边缘看到的 IP 与服务端看到的可能不一致而拒绝。"},
 }
 
 // Store is the handle handlers depend on. It hides the DB and the cache.
 type Store struct {
 	db *sql.DB
 
-	mu    sync.RWMutex
-	cache map[string]string
+	mu     sync.RWMutex
+	cache  map[string]string
 	loaded bool
 }
 

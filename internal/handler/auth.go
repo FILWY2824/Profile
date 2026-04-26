@@ -1,17 +1,20 @@
 // auth.go — /api/auth/* 端点。
 //
-// 改动:
-//   1. writeDevEcho 改为只看 cfg.AppEnv == "development",生产环境绝不回显
-//      验证码到响应,无论 mailer 是否真的发出了邮件。
-//   2. 注册流程把 password hash 从 verification_codes.meta 挪到独立的
+// 安全策略修改 (2026-04):
+//   1. 移除 writeDevEcho 与所有 devCode 字段。无论环境如何,验证码绝不
+//      回显到 HTTP 响应。
+//   2. 邮件服务未配置时(email.ErrNotConfigured),发送验证码相关接口
+//      返回 503 + "服务器未配置邮件发送服务,请联系管理员"。
+//   3. 注册流程把 password hash 从 verification_codes.meta 挪到独立的
 //      pending_registrations 表。
-//   3. 验证码用 SHA-256 hash 存储,VCodeRepo.VerifyCode 做常量时间比较。
-//   4. 验证码消费用 ConsumeIfUnused 原子操作。
+//   4. 验证码用 SHA-256 hash 存储,VCodeRepo.VerifyCode 做常量时间比较。
+//   5. 验证码消费用 ConsumeIfUnused 原子操作。
 package handler
 
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -102,13 +105,12 @@ func (h *AuthHandler) vcodeExpiry() time.Duration {
 	return time.Duration(mins) * time.Minute
 }
 
-// writeDevEcho 关键安全修复:仅在 APP_ENV=development 时回显。
-// 生产环境即便 RESEND_API_KEY 没设置,也绝不向响应里塞验证码——避免
-// "运维忘填 RESEND key 导致全网用户拿到验证码" 的事故。
-func (h *AuthHandler) writeDevEcho(body map[string]any, code string) {
-	if !h.Cfg.IsProduction() {
-		body["devCode"] = code
-	}
+// emailNotConfigured 把 email.ErrNotConfigured 转换成对终端用户可见的
+// 503 + 中文提示。所有"发送验证码"路径在调用 h.Email.Send 失败后,
+// 都通过这个函数把错误冒泡回客户端。
+func emailNotConfigured() *echo.HTTPError {
+	return echo.NewHTTPError(http.StatusServiceUnavailable,
+		"服务器未配置邮件发送服务,请联系管理员")
 }
 
 type publicUser struct {
@@ -154,6 +156,12 @@ func (h *AuthHandler) register(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	// 关键修改:邮件服务必须就绪,否则用户根本收不到验证码,直接拒绝
+	// 比"先注册再卡在确认"体验更好。
+	if !h.Email.Configured() {
+		return emailNotConfigured()
+	}
+
 	ip := ratelimit.ClientIP(c.Request())
 	if d := h.rl("register:ip", ip, "RL_REGISTER_IP_MAX", "RL_REGISTER_IP_WINDOW_MINUTES", 10, 60); !d.Allowed {
 		return rateLimited(c, d)
@@ -193,11 +201,16 @@ func (h *AuthHandler) register(c echo.Context) error {
 		h.Settings.Get("SITE_NAME"), "注册账号", code,
 		h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30),
 	)
-	_ = h.Email.Send(c.Request().Context(), in.Email, subject, htmlBody, textBody)
+	if err := h.Email.Send(c.Request().Context(), in.Email, subject, htmlBody, textBody); err != nil {
+		if errors.Is(err, email.ErrNotConfigured) {
+			return emailNotConfigured()
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, "邮件发送失败,请稍后重试")
+	}
 
-	body := map[string]any{"success": true, "message": "验证码已发送,请查收邮件"}
-	h.writeDevEcho(body, code)
-	return c.JSON(http.StatusOK, body)
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true, "message": "验证码已发送,请查收邮件",
+	})
 }
 
 // ─── /register/confirm ────────────────────────────────────────────────────
@@ -341,6 +354,7 @@ func (h *AuthHandler) login(c echo.Context) error {
 
 	_ = h.LoginHistory.Record(model.LoginHistory{
 		UserID: u.ID, Email: u.Email, IP: ip, UserAgent: ua, Success: true,
+		Reason: "密码登录",
 	})
 	_ = h.Users.UpdateLastLogin(u.ID, ip)
 	_ = h.ActivityLog.Record(model.ActivityLog{
@@ -380,6 +394,10 @@ func (h *AuthHandler) forgotPassword(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	if !h.Email.Configured() {
+		return emailNotConfigured()
+	}
+
 	ip := ratelimit.ClientIP(c.Request())
 	if d := h.rl("forgot:ip", ip, "RL_FORGOT_IP_MAX", "RL_FORGOT_IP_WINDOW_MINUTES", 20, 60); !d.Allowed {
 		return rateLimited(c, d)
@@ -395,6 +413,7 @@ func (h *AuthHandler) forgotPassword(c echo.Context) error {
 
 	u, err := h.Users.FindByEmail(in.Email)
 	if err != nil {
+		// 邮箱不存在时,返回相同的"已发送"消息以防枚举,但仍然给前端一个可显示的提示
 		return c.JSON(http.StatusOK, body)
 	}
 
@@ -403,16 +422,20 @@ func (h *AuthHandler) forgotPassword(c echo.Context) error {
 		Email: u.Email, Code: code, Type: model.VCodeForgotPassword,
 		IP: ip, ExpiresAt: time.Now().Add(h.vcodeExpiry()),
 	}); err != nil {
-		return c.JSON(http.StatusOK, body)
+		return echo.NewHTTPError(http.StatusInternalServerError, "服务器错误")
 	}
 
 	subject, htmlBody, textBody := email.ComposeVerificationCode(
 		h.Settings.Get("SITE_NAME"), "重置密码", code,
 		h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30),
 	)
-	_ = h.Email.Send(c.Request().Context(), u.Email, subject, htmlBody, textBody)
+	if err := h.Email.Send(c.Request().Context(), u.Email, subject, htmlBody, textBody); err != nil {
+		if errors.Is(err, email.ErrNotConfigured) {
+			return emailNotConfigured()
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, "邮件发送失败,请稍后重试")
+	}
 
-	h.writeDevEcho(body, code)
 	return c.JSON(http.StatusOK, body)
 }
 
@@ -489,6 +512,10 @@ func (h *AuthHandler) verifyEmailSend(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	if !h.Email.Configured() {
+		return emailNotConfigured()
+	}
+
 	ip := ratelimit.ClientIP(c.Request())
 	if d := h.rl("verify-email:ip", ip, "RL_REGISTER_IP_MAX", "RL_REGISTER_IP_WINDOW_MINUTES", 10, 60); !d.Allowed {
 		return rateLimited(c, d)
@@ -509,15 +536,19 @@ func (h *AuthHandler) verifyEmailSend(c echo.Context) error {
 		Email: u.Email, Code: code, Type: model.VCodeEmailVerify,
 		IP: ip, ExpiresAt: time.Now().Add(h.vcodeExpiry()),
 	}); err != nil {
-		return c.JSON(http.StatusOK, body)
+		return echo.NewHTTPError(http.StatusInternalServerError, "服务器错误")
 	}
 
 	subject, htmlBody, textBody := email.ComposeVerificationCode(
 		h.Settings.Get("SITE_NAME"), "验证邮箱", code,
 		h.Settings.GetInt("VERIFICATION_CODE_EXPIRY_MINUTES", 30),
 	)
-	_ = h.Email.Send(c.Request().Context(), u.Email, subject, htmlBody, textBody)
-	h.writeDevEcho(body, code)
+	if err := h.Email.Send(c.Request().Context(), u.Email, subject, htmlBody, textBody); err != nil {
+		if errors.Is(err, email.ErrNotConfigured) {
+			return emailNotConfigured()
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, "邮件发送失败,请稍后重试")
+	}
 	return c.JSON(http.StatusOK, body)
 }
 

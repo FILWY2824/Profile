@@ -22,10 +22,13 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in items" :key="c.id" class="admin-row">
+            <tr v-for="c in pagedItems" :key="c.id" class="admin-row">
               <td class="px-4 py-3 font-semibold text-fg">{{ c.title }}</td>
               <td class="px-4 py-3">
-                <a :href="c.url" target="_blank" class="text-xs text-teal-300 hover:underline truncate inline-block max-w-[200px] align-middle font-mono">{{ c.url }}</a>
+                <!-- 只在管理员视图显示 URL,但不再做"点击跳转"
+                     这能避免在表格里用 anchor 让浏览器历史记录里出现 URL。
+                     管理员要测试卡片可以用主页或编辑表单。 -->
+                <span class="font-mono text-xs text-fg-dim truncate inline-block max-w-[260px] align-middle" :title="c.url">{{ c.url }}</span>
               </td>
               <td class="px-4 py-3 text-xs text-fg-dim">{{ sectionName(c.sectionId) }}</td>
               <td class="px-4 py-3"><PermissionBadge :value="c.permission" /></td>
@@ -41,13 +44,16 @@
           </tbody>
         </table>
       </div>
+      <div v-if="items.length > 0" class="px-4 py-2">
+        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      </div>
     </div>
 
     <Modal v-model="modalOpen" :title="editing?.id ? '编辑卡片' : '新建卡片'">
       <div v-if="editing" class="space-y-4">
         <div><label class="label">标题</label><input v-model="editing.title" class="input" /></div>
         <div><label class="label">URL</label><input v-model="editing.url" class="input input-mono" placeholder="https://..." /></div>
-        <div><label class="label">描述</label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
+        <div><label class="label">描述 <span class="label-opt">(可选)</span></label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label">板块</label>
@@ -77,10 +83,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import { useConfirm } from "../../confirm.js";
 import Modal from "../Modal.vue";
+import Pagination from "../Pagination.vue";
 import PermissionBadge from "../PermissionBadge.vue";
 
 const items = ref([]);
@@ -88,13 +96,22 @@ const sections = ref([]);
 const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
+const page = ref(1);
+const PAGE_SIZE = 10;
+
+const pagedItems = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE;
+  return items.value.slice(start, start + PAGE_SIZE);
+});
 
 const sectionName = (id) => sections.value.find((s) => s.id === id)?.name || (id ? "?" : "—");
 
 async function load() {
-  const [c, s] = await Promise.all([api.get("/admin/cards"), api.get("/admin/sections")]);
-  items.value = c.items || [];
-  sections.value = s.items || [];
+  try {
+    const [c, s] = await Promise.all([api.get("/admin/cards"), api.get("/admin/sections")]);
+    items.value = c.items || [];
+    sections.value = s.items || [];
+  } catch (e) { errToast(e.message); }
 }
 function openCreate() { editing.value = { title: "", url: "", description: "", sectionId: "", permission: "public", order: items.value.length }; modalOpen.value = true; }
 function openEdit(c) { editing.value = { ...c, sectionId: c.sectionId || "" }; modalOpen.value = true; }
@@ -102,15 +119,30 @@ async function onSave() {
   busy.value = true;
   try {
     const body = { ...editing.value };
-    if (editing.value.id) await api.patch("/admin/cards/" + editing.value.id, body);
-    else await api.post("/admin/cards", body);
-    okToast("已保存"); modalOpen.value = false; await load();
+    if (editing.value.id) {
+      await api.patch("/admin/cards/" + editing.value.id, body);
+      okToast("卡片已更新");
+    } else {
+      await api.post("/admin/cards", body);
+      okToast("卡片已创建");
+    }
+    modalOpen.value = false; await load();
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 async function onDelete(c) {
-  if (!confirm(`删除卡片 ${c.title}?`)) return;
-  try { await api.delete("/admin/cards/" + c.id); okToast("已删除"); await load(); }
-  catch (e) { errToast(e.message); }
+  const ok = await useConfirm({
+    title: "删除卡片",
+    message: `确认删除卡片 "${c.title}"?`,
+    detail: c.url,
+    kind: "danger",
+    confirmText: "删除",
+  });
+  if (!ok) return;
+  try {
+    await api.delete("/admin/cards/" + c.id);
+    okToast("卡片已删除");
+    await load();
+  } catch (e) { errToast(e.message); }
 }
 onMounted(load);
 </script>
@@ -126,5 +158,13 @@ onMounted(load);
 }
 .admin-row:hover {
   background-color: rgba(255, 255, 255, 0.55);
+}
+.label-opt {
+  color: var(--fg-mute);
+  font-weight: normal;
+  font-size: 11px;
+  letter-spacing: normal;
+  margin-left: 4px;
+  text-transform: none;
 }
 </style>

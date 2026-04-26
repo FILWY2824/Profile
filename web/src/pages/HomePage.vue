@@ -17,10 +17,7 @@
       </h1>
 
       <p v-if="siteDescription" class="hero-lede">{{ siteDescription }}</p>
-      <p v-else-if="cards.length" class="hero-lede">
-        {{ cards.length }} 个常用入口分 {{ Math.max(1, sections.length) }} 组,按 <b>⌘K</b> 快速搜索。
-      </p>
-      <p v-else class="hero-lede">一处汇集你常用工具的入口面板。</p>
+      <p v-else-if="cards.length === 0" class="hero-lede">一处汇集你常用工具的入口面板。</p>
     </header>
 
     <!-- 加载中 -->
@@ -108,7 +105,7 @@ import { globalSearch } from "../searchStore.js";
 
 const sections = ref([]);
 const cards = ref([]);
-const siteName = ref("栖枢");
+const siteName = ref("Qi Shu");
 const siteDescription = ref("");
 const loading = ref(true);
 const search = globalSearch; // 顶部 NavBar 提供输入框
@@ -116,7 +113,7 @@ const search = globalSearch; // 顶部 NavBar 提供输入框
 const userName = computed(() => currentUser.value?.name || "");
 
 const isDefaultName = computed(
-  () => siteName.value === "栖枢" || siteName.value === "Hub",
+  () => siteName.value === "Qi Shu" || siteName.value === "栖枢" || siteName.value === "Hub",
 );
 
 const greeting = computed(() => {
@@ -150,8 +147,7 @@ const filteredCards = computed(() => {
   return cards.value.filter((c) => {
     return (
       c.title?.toLowerCase().includes(q) ||
-      c.description?.toLowerCase().includes(q) ||
-      c.url?.toLowerCase().includes(q)
+      c.description?.toLowerCase().includes(q)
     );
   }).sort((a, b) => a.order - b.order);
 });
@@ -170,9 +166,9 @@ onMounted(async () => {
     const data = await api.get("/homepage");
     sections.value = (data.sections || []).sort((a, b) => a.order - b.order);
     cards.value = data.cards || [];
-    siteName.value = data.siteName || "栖枢";
+    siteName.value = data.siteName || "Qi Shu";
     siteDescription.value = data.siteDescription || "";
-    document.title = siteName.value + " · 工具面板";
+    document.title = siteName.value;
   } catch (e) {
     console.error(e);
   } finally {

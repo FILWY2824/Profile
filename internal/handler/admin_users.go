@@ -43,7 +43,7 @@ func (h *AdminUsersHandler) Register(g *echo.Group) {
 func (h *AdminUsersHandler) list(c echo.Context) error {
 	role := c.QueryParam("role")
 	status := c.QueryParam("status")
-	p := readPagination(c, 50, 500)
+	p := readPagination(c, 10, 500)
 	users, err := h.Users.List(role, status, p.Limit, p.Offset)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

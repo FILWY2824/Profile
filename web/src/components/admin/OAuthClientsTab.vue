@@ -21,7 +21,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in items" :key="c.id" class="admin-row">
+            <tr v-for="c in pagedItems" :key="c.id" class="admin-row">
               <td class="px-4 py-3 font-semibold text-fg">{{ c.name }}</td>
               <td class="px-4 py-3 font-mono text-xs text-fg-dim">{{ c.clientId }}</td>
               <td class="px-4 py-3 text-xs text-fg-dim">{{ levelLabel(c.minLevel) }}</td>
@@ -38,6 +38,9 @@
           </tbody>
         </table>
       </div>
+      <div v-if="items.length > 0" class="px-4 py-2">
+        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      </div>
     </div>
 
     <Modal v-model="modalOpen" :title="editing?.id ? '编辑客户端' : '新建客户端'">
@@ -47,18 +50,30 @@
           <label class="label">Client ID (字母数字短横线)</label>
           <input v-model="editing.clientId" class="input input-mono" />
         </div>
-        <div><label class="label">描述</label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
+        <div><label class="label">描述 <span class="label-opt">(可选)</span></label><textarea v-model="editing.description" rows="2" class="input"></textarea></div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label">主页 URL</label><input v-model="editing.homepageUrl" class="input input-mono" /></div>
-          <div><label class="label">Logo URL</label><input v-model="editing.logoUrl" class="input input-mono" /></div>
+          <div><label class="label">主页 URL <span class="label-opt">(可选)</span></label><input v-model="editing.homepageUrl" class="input input-mono" placeholder="https://app.example.com" /></div>
+          <div><label class="label">Logo URL <span class="label-opt">(可选)</span></label><input v-model="editing.logoUrl" class="input input-mono" placeholder="https://app.example.com/logo.svg" /></div>
         </div>
         <div>
           <label class="label">回调 URI (每行一个)</label>
           <textarea v-model="redirectURIsText" rows="3" class="input input-mono" placeholder="https://app.example.com/callback"></textarea>
         </div>
         <div>
-          <label class="label">允许的 Scopes (空格分隔)</label>
-          <input v-model="scopesText" class="input input-mono" placeholder="openid profile email" />
+          <label class="label">允许的 Scopes</label>
+          <div class="scope-grid">
+            <label v-for="s in availableScopes" :key="s.value" class="scope-item" :class="{ 'scope-item-on': isScopeOn(s.value) }">
+              <input
+                type="checkbox"
+                :checked="isScopeOn(s.value)"
+                @change="toggleScope(s.value, $event.target.checked)"
+              />
+              <div class="scope-meta">
+                <span class="scope-name">{{ s.value }}</span>
+                <span class="scope-desc">{{ s.description }}</span>
+              </div>
+            </label>
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -86,7 +101,7 @@
 
     <Modal v-model="secretOpen" title="客户端密钥 (仅展示一次)">
       <div class="space-y-4">
-        <div class="dev-banner">
+        <div class="alert-warn">
           请立即复制并妥善保管。关闭后无法再次查看。
         </div>
         <div>
@@ -110,7 +125,9 @@
 import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import { useConfirm } from "../../confirm.js";
 import Modal from "../Modal.vue";
+import Pagination from "../Pagination.vue";
 
 const items = ref([]);
 const modalOpen = ref(false);
@@ -118,27 +135,56 @@ const secretOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
 const secretInfo = ref({});
+const page = ref(1);
+const PAGE_SIZE = 10;
+
+const pagedItems = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE;
+  return items.value.slice(start, start + PAGE_SIZE);
+});
+
+// OAuth 标准 scope 集合 — 复选框列表替代之前的"空格分隔"自由文本输入。
+const availableScopes = [
+  { value: "openid",         description: "OpenID Connect 必要 scope,标识用户身份" },
+  { value: "profile",        description: "用户基础资料(姓名、头像、简介)" },
+  { value: "email",          description: "用户邮箱地址" },
+  { value: "offline_access", description: "允许签发 refresh_token,无需用户在场即可续期" },
+];
+
+function isScopeOn(value) {
+  return Array.isArray(editing.value?.scopes) && editing.value.scopes.includes(value);
+}
+function toggleScope(value, on) {
+  if (!editing.value) return;
+  const cur = Array.isArray(editing.value.scopes) ? editing.value.scopes : [];
+  if (on) {
+    if (!cur.includes(value)) editing.value.scopes = [...cur, value];
+  } else {
+    editing.value.scopes = cur.filter((x) => x !== value);
+  }
+}
 
 const redirectURIsText = computed({
   get: () => (editing.value?.redirectUris || []).join("\n"),
   set: (v) => { editing.value.redirectUris = v.split(/\r?\n/).map((x) => x.trim()).filter(Boolean); },
 });
-const scopesText = computed({
-  get: () => (editing.value?.scopes || []).join(" "),
-  set: (v) => { editing.value.scopes = v.split(/\s+/).filter(Boolean); },
-});
 
 const levelLabel = (n) => ({0:"用户", 1:"成员", 2:"管理员"})[n] || n;
 const statusLabel = (s) => ({active:"启用", disabled:"停用"})[s] || s;
 
-async function load() { const r = await api.get("/admin/oauth-clients"); items.value = r.items || []; }
+async function load() {
+  try {
+    const r = await api.get("/admin/oauth-clients");
+    items.value = r.items || [];
+  } catch (e) { errToast(e.message); }
+}
 
 function openCreate() {
   editing.value = { name: "", clientId: "", description: "", homepageUrl: "", logoUrl: "",
                     minLevel: 0, redirectUris: [], scopes: ["openid","profile"], status: "active" };
   modalOpen.value = true;
 }
-function openEdit(c) { editing.value = { ...c }; modalOpen.value = true; }
+function openEdit(c) { editing.value = { ...c, scopes: [...(c.scopes || [])] }; modalOpen.value = true; }
 
 async function onSave() {
   busy.value = true;
@@ -147,6 +193,7 @@ async function onSave() {
     let res;
     if (editing.value.id) {
       await api.patch("/admin/oauth-clients/" + editing.value.id, body);
+      okToast("客户端已更新");
     } else {
       res = await api.post("/admin/oauth-clients", body);
     }
@@ -155,29 +202,47 @@ async function onSave() {
     if (res?.clientSecret) {
       secretInfo.value = res;
       secretOpen.value = true;
-    } else {
-      okToast("已保存");
     }
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 
 async function onRotate(c) {
-  if (!confirm(`轮换 ${c.name} 的密钥? 旧密钥将立即失效。`)) return;
+  const ok = await useConfirm({
+    title: "轮换密钥",
+    message: `轮换 "${c.name}" 的客户端密钥?`,
+    detail: "旧密钥将立即失效,所有使用旧密钥的应用都需要更新配置。",
+    kind: "danger",
+    confirmText: "确认轮换",
+  });
+  if (!ok) return;
   try {
     const res = await api.post("/admin/oauth-clients/" + c.id + "/rotate-secret");
     secretInfo.value = res;
     secretOpen.value = true;
+    okToast("密钥已轮换");
   } catch (e) { errToast(e.message); }
 }
 
 async function onDelete(c) {
-  if (!confirm(`删除 ${c.name}? 将连同所有 token / 授权一并清除。`)) return;
-  try { await api.delete("/admin/oauth-clients/" + c.id); okToast("已删除"); await load(); }
-  catch (e) { errToast(e.message); }
+  const ok = await useConfirm({
+    title: "删除客户端",
+    message: `确认删除 "${c.name}"?`,
+    detail: "将连同所有 access token、refresh token 与用户授权一并清除。",
+    kind: "danger",
+    confirmText: "永久删除",
+  });
+  if (!ok) return;
+  try {
+    await api.delete("/admin/oauth-clients/" + c.id);
+    okToast("客户端已删除");
+    await load();
+  } catch (e) { errToast(e.message); }
 }
 
 function copySecret() {
-  navigator.clipboard?.writeText(secretInfo.value.clientSecret || "").then(() => okToast("已复制"));
+  navigator.clipboard?.writeText(secretInfo.value.clientSecret || "")
+    .then(() => okToast("Client Secret 已复制到剪贴板"))
+    .catch(() => errToast("复制失败,请手动选择文本"));
 }
 
 onMounted(load);
@@ -195,7 +260,7 @@ onMounted(load);
 .admin-row:hover {
   background-color: rgba(255, 255, 255, 0.55);
 }
-.dev-banner {
+.alert-warn {
   font-size: 13px;
   border-radius: 12px;
   border: 1px solid rgba(217, 119, 6, 0.40);
@@ -203,5 +268,59 @@ onMounted(load);
   padding: 12px 14px;
   color: #92400E;
   font-weight: 500;
+}
+.label-opt {
+  color: var(--fg-mute);
+  font-weight: normal;
+  font-size: 11px;
+  letter-spacing: normal;
+  margin-left: 4px;
+  text-transform: none;
+}
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.scope-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 36, 25, 0.14);
+  background-color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.scope-item:hover {
+  border-color: rgba(15, 36, 25, 0.24);
+  background-color: white;
+}
+.scope-item-on {
+  border-color: rgba(16, 185, 129, 0.55);
+  background-color: rgba(167, 243, 208, 0.30);
+}
+.scope-item input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--brand);
+}
+.scope-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.scope-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.scope-desc {
+  font-size: 11px;
+  color: var(--fg-mute);
+  line-height: 1.4;
 }
 </style>

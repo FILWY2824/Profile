@@ -38,7 +38,7 @@
         </div>
         <div>
           <label class="label">密码 (至少 8 字符)</label>
-          <input v-model="password" type="password" required minlength="8" class="input" placeholder="••••••••" />
+          <PasswordInput v-model="password" required :minlength="8" autocomplete="new-password" placeholder="••••••••" />
         </div>
 
         <div v-if="turnstileSiteKey" :data-sitekey="turnstileSiteKey" class="cf-turnstile pt-1"></div>
@@ -51,10 +51,6 @@
       </form>
 
       <form v-else @submit.prevent="onConfirm" class="space-y-4">
-        <div v-if="devCode" class="dev-banner">
-          <span class="text-warn font-mono font-semibold">DEV ·</span>
-          <span class="text-fg ml-1">验证码: <span class="text-teal-300 font-mono font-semibold">{{ devCode }}</span></span>
-        </div>
         <div>
           <label class="label">六位验证码</label>
           <input v-model="code" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric"
@@ -85,6 +81,7 @@ import { api } from "../api.js";
 import { loadSession } from "../session.js";
 import { navigate } from "../router.js";
 import { okToast, errToast } from "../toast.js";
+import PasswordInput from "../components/PasswordInput.vue";
 
 const step = ref(1);
 const email = ref("");
@@ -92,18 +89,25 @@ const password = ref("");
 const name = ref("");
 const code = ref("");
 const busy = ref(false);
-const devCode = ref("");
 const turnstileSiteKey = ref("");
+
+const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
 
 onMounted(async () => {
   try {
     const cfg = await api.get("/auth/turnstile-config");
     if (cfg.enabled && cfg.siteKey) {
       turnstileSiteKey.value = cfg.siteKey;
-      const s = document.createElement("script");
-      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-      s.async = true; s.defer = true;
-      document.head.appendChild(s);
+      // 防止重复加载 Turnstile 脚本(用户在 SPA 内部多次切换页面也是同一个 document)
+      if (!document.querySelector(`script[src="${TURNSTILE_SCRIPT}"]`)) {
+        const s = document.createElement("script");
+        s.src = TURNSTILE_SCRIPT;
+        s.async = true; s.defer = true;
+        document.head.appendChild(s);
+      } else if (window.turnstile) {
+        // 已经加载过,显式 render 一次以触发新挂载的 .cf-turnstile div
+        setTimeout(() => window.turnstile.render?.(".cf-turnstile"), 0);
+      }
     }
   } catch {}
 });
@@ -112,13 +116,12 @@ async function onSendCode() {
   busy.value = true;
   try {
     const tsToken = window.turnstile?.getResponse?.() || "";
-    const r = await api.post("/auth/register", {
+    await api.post("/auth/register", {
       email: email.value, password: password.value, name: name.value,
       turnstileToken: tsToken,
     });
-    devCode.value = r.devCode || "";
     step.value = 2;
-    okToast("验证码已发送");
+    okToast("验证码已发送至您的邮箱");
   } catch (e) {
     errToast(e.message);
     if (window.turnstile) window.turnstile.reset();
@@ -165,12 +168,5 @@ async function onConfirm() {
   color: #fff;
   border-color: transparent;
   box-shadow: 0 4px 10px -3px rgba(16, 185, 129, 0.45);
-}
-.dev-banner {
-  border-radius: 12px;
-  border: 1px solid rgba(217, 119, 6, 0.40);
-  background-color: rgba(254, 243, 199, 0.6);
-  padding: 12px;
-  font-size: 12px;
 }
 </style>

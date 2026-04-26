@@ -1,7 +1,12 @@
 // Package turnstile verifies Cloudflare Turnstile tokens.
 //
-// Reload semantics: Verifier 内部用 sync.RWMutex 包裹 secret/enabled,允许
-// admin 在管理后台修改 settings 后即时生效,无需重启容器。
+// Reload semantics: Verifier 内部用 sync.RWMutex 包裹 secret/enabled/sendRemoteIP,
+// 允许 admin 在管理后台修改 settings 后即时生效,无需重启容器。
+//
+// 修改 (2026-04):新增 sendRemoteIP 开关。家宽 / CGNAT / 用户在拿到挑战
+// 后切了网络的场景下,Cloudflare 边缘看到的 IP 可能与服务端 c.Request()
+// 的 IP 不一致,导致 siteverify 直接拒绝。这种情况下让管理员关闭
+// TURNSTILE_SEND_REMOTEIP(默认就是关的),只走 secret + token 校验。
 package turnstile
 
 import (
@@ -19,10 +24,11 @@ import (
 const verifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
 type Verifier struct {
-	mu      sync.RWMutex
-	secret  string
-	enabled bool
-	client  *http.Client
+	mu            sync.RWMutex
+	secret        string
+	enabled       bool
+	sendRemoteIP  bool
+	client        *http.Client
 }
 
 func New(secret string, enabled bool) *Verifier {
@@ -34,11 +40,12 @@ func New(secret string, enabled bool) *Verifier {
 }
 
 // Reload 在管理员保存设置后调用。无锁竞态:写入持有 Lock,读取走 RLock。
-func (v *Verifier) Reload(secret string, enabled bool) {
+func (v *Verifier) Reload(secret string, enabled, sendRemoteIP bool) {
 	s := strings.TrimSpace(secret)
 	v.mu.Lock()
 	v.secret = s
 	v.enabled = enabled && s != ""
+	v.sendRemoteIP = sendRemoteIP
 	v.mu.Unlock()
 }
 
@@ -52,6 +59,7 @@ func (v *Verifier) Verify(ctx context.Context, token, remoteIP string) error {
 	v.mu.RLock()
 	enabled := v.enabled
 	secret := v.secret
+	sendIP := v.sendRemoteIP
 	v.mu.RUnlock()
 
 	if !enabled {
@@ -64,7 +72,7 @@ func (v *Verifier) Verify(ctx context.Context, token, remoteIP string) error {
 	form := url.Values{}
 	form.Set("secret", secret)
 	form.Set("response", token)
-	if remoteIP != "" {
+	if sendIP && remoteIP != "" {
 		form.Set("remoteip", remoteIP)
 	}
 

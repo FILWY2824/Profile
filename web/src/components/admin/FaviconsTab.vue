@@ -23,10 +23,10 @@
             <tr v-if="items.length === 0">
               <td colspan="7" class="px-4 py-12 text-center text-fg-dim text-sm">暂无</td>
             </tr>
-            <tr v-for="r in items" :key="r.origin" class="admin-row">
+            <tr v-for="r in pagedItems" :key="r.origin" class="admin-row">
               <td class="px-4 py-3">
                 <div class="favicon-wrap">
-                  <img v-if="r.hasData" :src="`/api/favicons/image?origin=${encodeURIComponent(r.origin)}`" class="h-5 w-5" />
+                  <img v-if="r.hasData" :src="`/api/favicons/image?origin=${encodeURIComponent(r.origin)}`" class="h-5 w-5" alt="" />
                 </div>
               </td>
               <td class="px-4 py-3 font-mono text-xs text-fg">{{ r.origin }}</td>
@@ -42,27 +42,58 @@
           </tbody>
         </table>
       </div>
+      <div v-if="items.length > 0" class="px-4 py-2">
+        <Pagination :total="items.length" v-model:current-page="page" :page-size="10" />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import { useConfirm } from "../../confirm.js";
 import { formatTime } from "../../format.js";
+import Pagination from "../Pagination.vue";
 
 const items = ref([]);
-async function load() { const r = await api.get("/admin/favicons"); items.value = r.items || []; }
+const page = ref(1);
+const PAGE_SIZE = 10;
+
+const pagedItems = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE;
+  return items.value.slice(start, start + PAGE_SIZE);
+});
+
+async function load() {
+  try {
+    const r = await api.get("/admin/favicons");
+    items.value = r.items || [];
+  } catch (e) { errToast(e.message); }
+}
 
 async function onRefresh(origin) {
-  try { await api.post("/admin/favicons/refresh", { origin }); okToast("已刷新"); await load(); }
-  catch (e) { errToast(e.message); }
+  try {
+    await api.post("/admin/favicons/refresh", { origin });
+    okToast("图标缓存已刷新");
+    await load();
+  } catch (e) { errToast(e.message); }
 }
 async function onDelete(origin) {
-  if (!confirm(`删除 ${origin} 的缓存?`)) return;
-  try { await api.delete("/admin/favicons/" + encodeURIComponent(origin)); okToast("已删除"); await load(); }
-  catch (e) { errToast(e.message); }
+  const ok = await useConfirm({
+    title: "删除图标缓存",
+    message: `确认删除该 origin 的图标缓存?`,
+    detail: origin,
+    kind: "danger",
+    confirmText: "删除",
+  });
+  if (!ok) return;
+  try {
+    await api.delete("/admin/favicons/" + encodeURIComponent(origin));
+    okToast("图标缓存已删除");
+    await load();
+  } catch (e) { errToast(e.message); }
 }
 onMounted(load);
 </script>

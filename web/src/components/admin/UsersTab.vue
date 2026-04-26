@@ -3,7 +3,7 @@
     <header class="flex items-center justify-between gap-4 flex-wrap">
       <div>
         <h1 class="h-page">用户管理<span class="text-teal-300">.</span></h1>
-        <p class="text-fg-dim text-sm mt-1.5">{{ users.length }} / {{ total }} 用户</p>
+        <p class="text-fg-dim text-sm mt-1.5">{{ total }} 个用户</p>
       </div>
       <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
     </header>
@@ -33,8 +33,14 @@
                 <button @click="onDelete(u)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
+            <tr v-if="users.length === 0">
+              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">暂无用户</td>
+            </tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="total > 0" class="px-4 py-2">
+        <Pagination :total="total" v-model:current-page="page" :page-size="10" @page-change="load" />
       </div>
     </div>
 
@@ -50,7 +56,7 @@
         </div>
         <div v-if="!editing.id">
           <label class="label">密码</label>
-          <input v-model="editing.password" type="password" class="input" placeholder="至少 8 字符" />
+          <PasswordInput v-model="editing.password" autocomplete="new-password" placeholder="至少 8 字符" />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -83,14 +89,18 @@
 import { ref, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import { useConfirm } from "../../confirm.js";
 import { formatTime } from "../../format.js";
 import Modal from "../Modal.vue";
+import Pagination from "../Pagination.vue";
+import PasswordInput from "../PasswordInput.vue";
 
 const users = ref([]);
 const total = ref(0);
 const modalOpen = ref(false);
 const editing = ref(null);
 const busy = ref(false);
+const page = ref(1);
 
 const roleLabel = (r) => ({admin:"管理员", member:"成员", user:"用户"}[r] || r);
 const statusLabel = (s) => ({active:"活跃", banned:"封禁", disabled:"禁用"}[s] || s);
@@ -107,9 +117,11 @@ function statusBadge(s) {
 }
 
 async function load() {
-  const r = await api.get("/admin/users?limit=200");
-  users.value = r.items || [];
-  total.value = r.total || 0;
+  try {
+    const r = await api.get(`/admin/users?limit=10&offset=${(page.value - 1) * 10}`);
+    users.value = r.items || [];
+    total.value = r.total || 0;
+  } catch (e) { errToast(e.message); }
 }
 
 function openCreate() {
@@ -129,23 +141,31 @@ async function onSave() {
         name: editing.value.name, role: editing.value.role,
         status: editing.value.status, bio: editing.value.bio,
       });
+      okToast("用户已更新");
     } else {
       await api.post("/admin/users", {
         email: editing.value.email, password: editing.value.password,
         name: editing.value.name, role: editing.value.role,
       });
+      okToast("用户已创建");
     }
-    okToast("已保存");
     modalOpen.value = false;
     await load();
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 
 async function onDelete(u) {
-  if (!confirm(`确认删除用户 ${u.email}?\n这将连同其所有 OAuth token / 授权一并清除。`)) return;
+  const ok = await useConfirm({
+    title: "删除用户",
+    message: `确认删除用户 "${u.name || u.email}"?`,
+    detail: `这将连同其所有 OAuth token、授权与活动日志一并清除,操作不可恢复。\n邮箱:${u.email}`,
+    kind: "danger",
+    confirmText: "永久删除",
+  });
+  if (!ok) return;
   try {
     await api.delete("/admin/users/" + u.id);
-    okToast("已删除");
+    okToast("用户已删除");
     await load();
   } catch (e) { errToast(e.message); }
 }

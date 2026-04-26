@@ -83,7 +83,7 @@ func run() error {
 	oauthGrants := repository.NewOAuthGrantRepo(sqldb.DB)
 
 	// Services
-	sessionDays := store.GetInt("SESSION_EXPIRY_DAYS", 7)
+	sessionDays := store.GetInt("SESSION_EXPIRY_DAYS", 1)
 	if sessionDays < 1 {
 		sessionDays = 1
 	} else if sessionDays > 365 {
@@ -96,15 +96,15 @@ func run() error {
 		store.Get("RESEND_API_KEY"),
 		store.Get("RESEND_FROM"),
 	)
-	if mailer.DevMode() {
-		log.Println("[boot] email sender = DEV MODE (codes echoed to stdout)")
-		if cfg.IsProduction() {
-			log.Println("[WARN] APP_ENV=production 但 RESEND_API_KEY 为空 — 验证码不会通过邮件发出,且不会回显到响应。请在管理后台配置邮件。")
-		}
+	if !mailer.Configured() {
+		log.Println("[boot] email sender NOT configured — 验证码相关接口会返回 503 直到管理员在后台填入 RESEND_API_KEY/RESEND_FROM。")
 	}
 
 	tsEnabled := store.GetBool("TURNSTILE_ENABLED")
+	tsSendIP := store.GetBool("TURNSTILE_SEND_REMOTEIP")
 	ts := turnstile.New(store.Get("TURNSTILE_SECRET_KEY"), tsEnabled)
+	// 把 sendRemoteIP 也同步进来 — turnstile.New 没收这个参数,我们 reload 一次。
+	ts.Reload(store.Get("TURNSTILE_SECRET_KEY"), tsEnabled, tsSendIP)
 
 	limiter := ratelimit.NewMemoryLimiter(2000)
 	stopSweep := make(chan struct{})
@@ -141,7 +141,12 @@ func run() error {
 		CSPExtraFrameSrc:   []string{"https://challenges.cloudflare.com"},
 	}))
 	// 6) Session(读 cookie / Bearer 解析用户)
-	e.Use(appmw.Session(signer, users))
+	resumeGap := time.Duration(store.GetInt("SESSION_RESUME_GAP_MINUTES", 30)) * time.Minute
+	e.Use(appmw.SessionWithConfig(appmw.SessionConfig{
+		Signer: signer, Users: users,
+		LoginHistory: loginHist,
+		ResumeGap:    resumeGap,
+	}))
 	// 7) CSRF — OAuth 端点白名单(走 client credentials,不能用 cookie 校验)
 	e.Use(appmw.CSRF(appmw.CSRFConfig{
 		Secure: cfg.IsProduction(),
@@ -155,6 +160,7 @@ func run() error {
 
 	api := e.Group("/api")
 	api.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+	api.HEAD("/healthz", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 	api.GET("/csrf", func(c echo.Context) error {
 		// 给 SPA 启动时调用一次,确保 cookie 被下发。中间件已在响应头中
 		// 设置过,这里只是显式触发并回 200。
@@ -169,7 +175,10 @@ func run() error {
 	}
 	authH.Register(api.Group("/auth"))
 
-	pubH := &handler.PublicHandler{Sections: sections, Cards: cards}
+	pubH := &handler.PublicHandler{
+		Sections: sections, Cards: cards,
+		ActivityLog: activityLog, Settings: store,
+	}
 	pubH.Register(api)
 
 	faviconH := handler.NewFaviconHandler(cards, favicons, activityLog)

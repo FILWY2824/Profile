@@ -7,7 +7,6 @@
           <span class="sigil"></span>
           <span class="hidden sm:flex flex-col leading-tight ml-1">
             <span class="brand-name">{{ siteName }}</span>
-            <span class="brand-sub">工具面板</span>
           </span>
         </a>
 
@@ -98,7 +97,7 @@ import { globalSearch } from "../searchStore.js";
 const open = ref(false);
 const dropdownRef = ref(null);
 const searchInput = ref(null);
-const siteName = ref("栖枢");
+const siteName = ref("Qi Shu");
 const totalCards = ref(0);
 
 const initial = computed(() => {
@@ -189,13 +188,6 @@ onUnmounted(() => {
   letter-spacing: -0.022em;
   color: var(--fg);
   line-height: 1;
-}
-.brand-sub {
-  font-size: 10px;
-  color: var(--fg-mute);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  margin-top: 2px;
 }
 
 /* 顶部搜索条 — 占据中部弹性空间 */

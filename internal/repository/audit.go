@@ -1,3 +1,9 @@
+// audit.go — login_history 与 activity_log 的存储层。
+//
+// 修改 (2026-04):
+//   - 新增 ListByUserPaged / CountByUser / Count 方法,前端账户中心和
+//     管理员审计页都要做 10 条/页 + 总条数翻页,旧的 ListByUser 只是
+//     "最近 N 条",不能翻页。
 package repository
 
 import (
@@ -38,18 +44,32 @@ func (r *LoginHistoryRepo) Record(h model.LoginHistory) error {
 }
 
 // ListByUser returns the most recent N entries for a single user.
+// Kept for backward compat — new callers should use ListByUserPaged.
 func (r *LoginHistoryRepo) ListByUser(userID string, limit int) ([]model.LoginHistory, error) {
+	return r.ListByUserPaged(userID, limit, 0)
+}
+
+// ListByUserPaged supports limit + offset for client-side pagination.
+func (r *LoginHistoryRepo) ListByUserPaged(userID string, limit, offset int) ([]model.LoginHistory, error) {
 	rows, err := r.db.Query(`
 		SELECT id, COALESCE(user_id, ''), email, ip, user_agent, success, reason, timestamp
 		FROM login_history
 		WHERE user_id = ?
 		ORDER BY timestamp DESC
-		LIMIT ?`, userID, limit)
+		LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanLoginRows(rows)
+}
+
+// CountByUser returns the total login_history rows for a user, used by
+// pagination UI to render page numbers.
+func (r *LoginHistoryRepo) CountByUser(userID string) (int, error) {
+	var n int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM login_history WHERE user_id = ?`, userID).Scan(&n)
+	return n, err
 }
 
 // ListAll is for admin UI. Paged.
@@ -64,6 +84,13 @@ func (r *LoginHistoryRepo) ListAll(limit, offset int) ([]model.LoginHistory, err
 	}
 	defer rows.Close()
 	return scanLoginRows(rows)
+}
+
+// Count returns total login_history rows site-wide.
+func (r *LoginHistoryRepo) Count() (int, error) {
+	var n int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM login_history`).Scan(&n)
+	return n, err
 }
 
 func scanLoginRows(rows *sql.Rows) ([]model.LoginHistory, error) {
@@ -89,6 +116,22 @@ func (r *LoginHistoryRepo) PruneOlderThan(cutoff time.Time) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// LastSuccessfulForUser returns the timestamp (RFC3339 string) of the
+// user's most recent successful login_history entry, or empty string if
+// none exists. Used by the session "resume" tracker to decide whether
+// enough time has passed to count the current request as a fresh login.
+func (r *LoginHistoryRepo) LastSuccessfulForUser(userID string) (string, error) {
+	var ts string
+	err := r.db.QueryRow(`
+		SELECT timestamp FROM login_history
+		WHERE user_id = ? AND success = 1
+		ORDER BY timestamp DESC LIMIT 1`, userID).Scan(&ts)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return ts, err
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -118,17 +161,28 @@ func (r *ActivityLogRepo) Record(a model.ActivityLog) error {
 	return err
 }
 
+// ListByUser kept for legacy callers; new callers should use ListByUserPaged.
 func (r *ActivityLogRepo) ListByUser(userID string, limit int) ([]model.ActivityLog, error) {
+	return r.ListByUserPaged(userID, limit, 0)
+}
+
+func (r *ActivityLogRepo) ListByUserPaged(userID string, limit, offset int) ([]model.ActivityLog, error) {
 	rows, err := r.db.Query(`
 		SELECT id, COALESCE(user_id, ''), username, email, action, detail,
 		       COALESCE(target, ''), ip, meta, timestamp
 		FROM activity_log WHERE user_id = ?
-		ORDER BY timestamp DESC LIMIT ?`, userID, limit)
+		ORDER BY timestamp DESC LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanActivityRows(rows)
+}
+
+func (r *ActivityLogRepo) CountByUser(userID string) (int, error) {
+	var n int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM activity_log WHERE user_id = ?`, userID).Scan(&n)
+	return n, err
 }
 
 func (r *ActivityLogRepo) ListAll(limit, offset int) ([]model.ActivityLog, error) {
@@ -141,6 +195,12 @@ func (r *ActivityLogRepo) ListAll(limit, offset int) ([]model.ActivityLog, error
 	}
 	defer rows.Close()
 	return scanActivityRows(rows)
+}
+
+func (r *ActivityLogRepo) Count() (int, error) {
+	var n int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM activity_log`).Scan(&n)
+	return n, err
 }
 
 func scanActivityRows(rows *sql.Rows) ([]model.ActivityLog, error) {
