@@ -8,8 +8,8 @@
       </div>
 
       <h1 class="hero-title">
-        <template v-if="siteName === 'Hub'">
-          挑一个工具,<br /><em>开始今天的事</em>。
+        <template v-if="isDefaultName">
+          <span class="hero-slogan">挑一个工具,<em>开始今天的事</em>。</span>
         </template>
         <template v-else>
           {{ siteName }}<em class="dot">.</em>
@@ -22,21 +22,6 @@
       </p>
       <p v-else class="hero-lede">一处汇集你常用工具的入口面板。</p>
     </header>
-
-    <!-- 玻璃搜索条 -->
-    <div class="glass-search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/>
-        <path d="m21 21-4.3-4.3"/>
-      </svg>
-      <input
-        ref="searchInput"
-        v-model="search"
-        type="text"
-        :placeholder="searchPlaceholder"
-      />
-      <kbd>⌘K</kbd>
-    </div>
 
     <!-- 加载中 -->
     <div v-if="loading" class="py-20 text-center">
@@ -71,13 +56,12 @@
       </div>
     </div>
 
-    <!-- Bento 板块 -->
-    <div v-else class="bento-grid">
+    <!-- 板块 — 每个板块整行 -->
+    <div v-else class="section-stack">
       <section
         v-for="(sec, idx) in sections"
         :key="sec.id"
         class="bento-group animate-fade-up"
-        :class="bentoSpan(idx)"
         :style="{ '--accent': accentFor(idx), animationDelay: `${idx * 50}ms` }"
       >
         <header class="sec-head">
@@ -99,7 +83,6 @@
       <section
         v-if="orphanCards.length"
         class="bento-group animate-fade-up"
-        :class="bentoSpan(sections.length)"
         :style="{ '--accent': accentFor(sections.length), animationDelay: `${sections.length * 50}ms` }"
       >
         <header class="sec-head">
@@ -121,16 +104,20 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { api } from "../api.js";
 import CardTile from "../components/CardTile.vue";
 import { currentUser } from "../session.js";
+import { globalSearch } from "../searchStore.js";
 
 const sections = ref([]);
 const cards = ref([]);
-const siteName = ref("Hub");
+const siteName = ref("栖枢");
 const siteDescription = ref("");
 const loading = ref(true);
-const search = ref("");
-const searchInput = ref(null);
+const search = globalSearch; // 顶部 NavBar 提供输入框
 
 const userName = computed(() => currentUser.value?.name || "");
+
+const isDefaultName = computed(
+  () => siteName.value === "栖枢" || siteName.value === "Hub",
+);
 
 const greeting = computed(() => {
   const h = new Date().getHours();
@@ -169,18 +156,7 @@ const filteredCards = computed(() => {
   }).sort((a, b) => a.order - b.order);
 });
 
-const searchPlaceholder = computed(() =>
-  cards.value.length > 0
-    ? `搜索 ${cards.value.length} 个工具…`
-    : "搜索工具…"
-);
-
-// Bento 布局: 板块按位置交替宽窄, 仿照参考设计 (7/5/5/7 节奏)
-function bentoSpan(idx) {
-  const pattern = ["span-7", "span-5", "span-5", "span-7"];
-  return "g-" + pattern[idx % pattern.length];
-}
-// 每个板块的强调色 — 4 色循环
+// 板块强调色 — 4 色循环
 const ACCENTS = ["#10B981", "#06B6D4", "#F59E0B", "#0891B2"];
 function accentFor(idx) { return ACCENTS[idx % ACCENTS.length]; }
 const ICONS = ["✦", "⌬", "✿", "❀", "✺", "❖"];
@@ -188,24 +164,13 @@ function iconFor(idx) { return ICONS[idx % ICONS.length]; }
 const EYEBROWS = ["每天打开", "代码 ·", "研究 ·", "娱乐 · 灵感", "·", "·"];
 function secEyebrow(idx) { return EYEBROWS[idx % EYEBROWS.length]; }
 
-function onKey(e) {
-  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-    e.preventDefault();
-    searchInput.value?.focus();
-  } else if (e.key === "Escape" && search.value) {
-    search.value = "";
-    searchInput.value?.blur();
-  }
-}
-
 onMounted(async () => {
-  document.addEventListener("keydown", onKey);
   clockTimer = setInterval(() => { now.value = new Date(); }, 60_000);
   try {
     const data = await api.get("/homepage");
     sections.value = (data.sections || []).sort((a, b) => a.order - b.order);
     cards.value = data.cards || [];
-    siteName.value = data.siteName || "Hub";
+    siteName.value = data.siteName || "栖枢";
     siteDescription.value = data.siteDescription || "";
     document.title = siteName.value + " · 工具面板";
   } catch (e) {
@@ -216,7 +181,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener("keydown", onKey);
   if (clockTimer) clearInterval(clockTimer);
 });
 </script>
@@ -224,7 +188,7 @@ onUnmounted(() => {
 <style scoped>
 /* ── Hero ───────────────────────────────────────────────── */
 .hero-block {
-  padding: 48px 0 32px;
+  padding: 40px 0 28px;
   text-align: center;
   max-width: 760px;
   margin: 0 auto;
@@ -241,7 +205,7 @@ onUnmounted(() => {
   border-radius: 999px;
   font-size: 12.5px;
   color: var(--fg-dim);
-  margin-bottom: 22px;
+  margin-bottom: 20px;
   box-shadow: 0 4px 14px -4px rgba(15, 36, 25, 0.08);
 }
 .greet-pill b {
@@ -276,10 +240,11 @@ onUnmounted(() => {
   font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
   font-variation-settings: "opsz" 96;
   font-weight: 700;
-  font-size: clamp(40px, 6.5vw, 72px);
-  line-height: 1.0;
-  letter-spacing: -0.04em;
-  margin-bottom: 18px;
+  /* 缩小、收紧字距,确保 "挑一个工具,开始今天的事。" 一行内显示 */
+  font-size: clamp(28px, 4.4vw, 48px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 14px;
   color: var(--fg);
 }
 .hero-title em {
@@ -296,12 +261,21 @@ onUnmounted(() => {
   -webkit-text-fill-color: var(--brand);
   color: var(--brand);
 }
+.hero-slogan {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 100%;
+}
+@media (max-width: 520px) {
+  /* 极窄屏允许换行,避免横向溢出 */
+  .hero-slogan { white-space: normal; }
+}
 
 .hero-lede {
-  font-size: 16.5px;
+  font-size: 15px;
   color: var(--fg-dim);
   max-width: 540px;
-  margin: 0 auto 28px;
+  margin: 0 auto;
   line-height: 1.55;
 }
 .hero-lede b {
@@ -315,68 +289,13 @@ onUnmounted(() => {
   border: 1px solid rgba(15, 36, 25, 0.06);
 }
 
-/* ── Glass Search ──────────────────────────────────────── */
-.glass-search {
-  max-width: 600px;
-  margin: 0 auto 44px;
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-radius: 16px;
-  padding: 14px 18px;
+/* ── 板块纵向堆叠 — 每个板块占整整一行 ──────────────────── */
+.section-stack {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 8px 32px -12px rgba(15, 36, 25, 0.10);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 36px;
 }
-.glass-search:focus-within {
-  border-color: rgba(16, 185, 129, 0.50);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 0 0 4px rgba(16, 185, 129, 0.12),
-    0 8px 32px -12px rgba(16, 185, 129, 0.20);
-}
-.glass-search svg {
-  width: 18px;
-  height: 18px;
-  color: var(--fg-mute);
-  flex-shrink: 0;
-}
-.glass-search input {
-  flex: 1;
-  background: transparent;
-  border: 0;
-  outline: 0;
-  font: inherit;
-  font-size: 15.5px;
-  color: var(--fg);
-}
-.glass-search input::placeholder {
-  color: var(--fg-mute);
-}
-.glass-search kbd {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  background: rgba(15, 36, 25, 0.06);
-  color: var(--fg-dim);
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  border: 1px solid rgba(15, 36, 25, 0.04);
-  flex-shrink: 0;
-}
-
-/* ── Bento Grid ────────────────────────────────────────── */
-.bento-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 14px;
-}
-@media (max-width: 980px) { .bento-grid { grid-template-columns: repeat(6, 1fr); } }
-@media (max-width: 580px) { .bento-grid { grid-template-columns: 1fr; } }
 
 .bento-group {
   background: rgba(255, 255, 255, 0.62);
@@ -384,7 +303,7 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.80);
   border-radius: 24px;
-  padding: 22px 22px 20px;
+  padding: 24px 24px 22px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.85) inset,
     0 12px 36px -16px rgba(15, 36, 25, 0.12);
@@ -394,14 +313,14 @@ onUnmounted(() => {
 .bento-group::before {
   content: "";
   position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 140px;
-  height: 140px;
+  top: -60px;
+  right: -60px;
+  width: 220px;
+  height: 220px;
   background: var(--accent, var(--brand));
   border-radius: 50%;
-  opacity: 0.18;
-  filter: blur(40px);
+  opacity: 0.16;
+  filter: blur(60px);
   z-index: 0;
   pointer-events: none;
 }
@@ -410,20 +329,11 @@ onUnmounted(() => {
   z-index: 1;
 }
 
-.g-span-7 { grid-column: span 7; }
-.g-span-5 { grid-column: span 5; }
-@media (max-width: 980px) {
-  .g-span-7, .g-span-5 { grid-column: span 6; }
-}
-@media (max-width: 580px) {
-  .g-span-7, .g-span-5 { grid-column: span 1; }
-}
-
 .sec-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   gap: 10px;
 }
 .sec-head h2 {
@@ -466,9 +376,16 @@ onUnmounted(() => {
   border: 1px solid rgba(15, 36, 25, 0.05);
 }
 
+/* 一行 3 张卡片 */
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 880px) {
+  .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 540px) {
+  .cards-grid { grid-template-columns: 1fr; }
 }
 </style>

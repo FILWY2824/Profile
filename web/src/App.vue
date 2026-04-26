@@ -18,7 +18,7 @@
         <div class="flex flex-wrap items-center justify-between gap-y-3 gap-x-6 py-6">
           <div class="flex items-center gap-3">
             <span class="sigil" style="width:1.5rem;height:1.5rem;border-radius:8px;"></span>
-            <span class="text-sm text-fg-dim">Hub · 工具面板</span>
+            <span class="text-sm text-fg-dim">栖枢 · 工具面板</span>
           </div>
           <div class="text-xs text-fg-mute font-mono">© {{ year }}</div>
         </div>

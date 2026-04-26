@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 //
-//  Hub · 柔绿玻璃主题 (Soft Mint Glass)
+//  栖枢 · 柔绿玻璃主题 (Soft Mint Glass)
 //
 //  设计语言:
 //    极浅薄荷底 + 4 层 mesh 渐变 (薄荷 / 嫩绿 / 浅青 / 暖米) + 半透明白色玻璃 surface

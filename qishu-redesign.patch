@@ -1,0 +1,847 @@
+diff -ruN a/web/index.html b/web/index.html
+--- a/web/index.html	2026-04-26 01:52:11.521420434 +0000
++++ b/web/index.html	2026-04-26 01:52:11.576420754 +0000
+@@ -7,7 +7,7 @@
+     <meta name="color-scheme" content="light" />
+ 
+     <!--
+-      Hub · 柔绿玻璃主题 favicon
++      栖枢 · 柔绿玻璃主题 favicon
+       圆角方块 + 中心闪光星, 渐变 emerald (#34D399 → #047857)
+     -->
+     <link
+@@ -29,7 +29,7 @@
+       rel="stylesheet"
+     />
+ 
+-    <title>Hub · 工具面板</title>
++    <title>栖枢 · 工具面板</title>
+   </head>
+   <body class="font-sans antialiased">
+     <div id="app"></div>
+diff -ruN a/web/src/App.vue b/web/src/App.vue
+--- a/web/src/App.vue	2026-04-26 01:52:11.523420446 +0000
++++ b/web/src/App.vue	2026-04-26 01:52:11.578420766 +0000
+@@ -18,7 +18,7 @@
+         <div class="flex flex-wrap items-center justify-between gap-y-3 gap-x-6 py-6">
+           <div class="flex items-center gap-3">
+             <span class="sigil" style="width:1.5rem;height:1.5rem;border-radius:8px;"></span>
+-            <span class="text-sm text-fg-dim">Hub · 工具面板</span>
++            <span class="text-sm text-fg-dim">栖枢 · 工具面板</span>
+           </div>
+           <div class="text-xs text-fg-mute font-mono">© {{ year }}</div>
+         </div>
+diff -ruN a/web/src/components/CardTile.vue b/web/src/components/CardTile.vue
+--- a/web/src/components/CardTile.vue	2026-04-26 01:52:11.525420457 +0000
++++ b/web/src/components/CardTile.vue	2026-04-26 01:52:11.625421040 +0000
+@@ -4,25 +4,38 @@
+     target="_blank"
+     rel="noopener noreferrer"
+     class="hub-card group"
++    :title="card.title"
+   >
+-    <!-- 图标盒 -->
+-    <div class="hub-card-icon">
+-      <img
+-        v-if="!iconFailed"
+-        :src="iconURL"
+-        @error="iconFailed = true"
+-        alt=""
+-        loading="lazy"
+-      />
+-      <span v-else class="hub-card-fallback">{{ initial }}</span>
+-    </div>
++    <!-- 顶部强调条:继承父板块 --accent -->
++    <span class="hub-card-stripe" aria-hidden="true"></span>
+ 
+-    <!-- 文字 -->
+-    <div class="hub-card-meta">
+-      <div class="hub-card-title">{{ card.title }}</div>
+-      <div v-if="card.description" class="hub-card-sub">{{ card.description }}</div>
+-      <div v-else class="hub-card-host">{{ originHost }}</div>
++    <!-- 主体:图标 + 文本 -->
++    <div class="hub-card-body">
++      <div class="hub-card-icon">
++        <img
++          v-if="!iconFailed"
++          :src="iconURL"
++          @error="iconFailed = true"
++          alt=""
++          loading="lazy"
++        />
++        <span v-else class="hub-card-fallback">{{ initial }}</span>
++      </div>
++
++      <div class="hub-card-meta">
++        <div class="hub-card-title">{{ card.title }}</div>
++        <div v-if="card.description" class="hub-card-sub">{{ card.description }}</div>
++        <div class="hub-card-host">{{ originHost }}</div>
++      </div>
+     </div>
++
++    <!-- 右上指示箭头,悬停浮现 -->
++    <svg class="hub-card-arrow" viewBox="0 0 24 24" fill="none"
++         stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
++         stroke-linejoin="round" aria-hidden="true">
++      <path d="M7 17 17 7"/>
++      <path d="M8 7h9v9"/>
++    </svg>
+   </a>
+ </template>
+ 
+@@ -35,69 +48,134 @@
+ 
+ const origin = computed(() => originOf(props.card.url));
+ const originHost = computed(() => {
+-  try { return new URL(props.card.url).host.replace(/^www\./, ""); } catch { return props.card.url; }
++  try { return new URL(props.card.url).host.replace(/^www\./, ""); }
++  catch { return props.card.url; }
+ });
+ const iconURL = computed(() =>
+   origin.value
+     ? `/api/favicons/image?origin=${encodeURIComponent(origin.value)}`
+-    : ""
++    : "",
+ );
+ const initial = computed(() => (props.card.title || "?").charAt(0).toUpperCase());
+ </script>
+ 
+ <style scoped>
+ .hub-card {
++  position: relative;
+   display: flex;
+-  align-items: center;
+-  gap: 12px;
+-  background-color: rgba(255, 255, 255, 0.55);
+-  backdrop-filter: blur(8px);
+-  -webkit-backdrop-filter: blur(8px);
+-  border: 1px solid rgba(255, 255, 255, 0.7);
+-  padding: 11px 13px;
+-  border-radius: 14px;
++  flex-direction: column;
++  background:
++    linear-gradient(160deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.55) 100%);
++  backdrop-filter: blur(12px) saturate(160%);
++  -webkit-backdrop-filter: blur(12px) saturate(160%);
++  border: 1px solid rgba(255, 255, 255, 0.80);
++  padding: 18px 18px 16px;
++  border-radius: 18px;
+   text-decoration: none;
+   color: var(--fg);
+-  transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+-  min-height: 60px;
+-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
++  overflow: hidden;
++  isolation: isolate;
++  min-height: 96px;
++  box-shadow:
++    0 1px 0 rgba(255, 255, 255, 0.7) inset,
++    0 6px 18px -10px rgba(15, 36, 25, 0.10);
++  transition:
++    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
++    box-shadow 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
++    border-color 0.18s,
++    background 0.22s;
++}
++
++/* 软光晕 — 继承板块 --accent,默认不可见,悬停时柔和透出 */
++.hub-card::before {
++  content: "";
++  position: absolute;
++  inset: -40% -40% auto auto;
++  width: 70%;
++  height: 70%;
++  background: var(--accent, #10B981);
++  filter: blur(48px);
++  opacity: 0;
++  transition: opacity 0.32s ease;
++  z-index: -1;
++  pointer-events: none;
+ }
+ .hub-card:hover {
+-  background-color: rgba(255, 255, 255, 0.95);
++  transform: translateY(-3px);
++  background:
++    linear-gradient(160deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.78) 100%);
+   border-color: rgba(255, 255, 255, 1);
+-  transform: translateY(-2px);
+-  color: var(--fg);
+   box-shadow:
+-    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+-    0 12px 24px -10px rgba(15, 36, 25, 0.18);
++    0 1px 0 rgba(255, 255, 255, 0.95) inset,
++    0 16px 36px -14px rgba(15, 36, 25, 0.18),
++    0 4px 12px -6px color-mix(in srgb, var(--accent, #10B981) 40%, transparent);
++}
++.hub-card:hover::before { opacity: 0.18; }
++
++/* 顶部强调条 — 由 0 → 100% 横向展开 */
++.hub-card-stripe {
++  position: absolute;
++  top: 0;
++  left: 0;
++  height: 3px;
++  width: 100%;
++  background: linear-gradient(
++    90deg,
++    color-mix(in srgb, var(--accent, #10B981) 0%, transparent),
++    var(--accent, #10B981) 30%,
++    color-mix(in srgb, var(--accent, #10B981) 70%, #06B6D4) 70%,
++    color-mix(in srgb, var(--accent, #10B981) 0%, transparent)
++  );
++  transform: scaleX(0.18);
++  transform-origin: left center;
++  opacity: 0.45;
++  transition: transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s;
++}
++.hub-card:hover .hub-card-stripe {
++  transform: scaleX(1);
++  opacity: 1;
++}
++
++.hub-card-body {
++  display: flex;
++  align-items: flex-start;
++  gap: 13px;
++  flex: 1;
++  min-width: 0;
+ }
+ 
+ .hub-card-icon {
+-  width: 38px;
+-  height: 38px;
+-  border-radius: 11px;
++  width: 46px;
++  height: 46px;
++  border-radius: 13px;
+   flex-shrink: 0;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   overflow: hidden;
+-  background: linear-gradient(160deg, #FFFFFF, #ECFDF5);
++  background: linear-gradient(155deg, #FFFFFF 0%, #ECFDF5 100%);
+   border: 1px solid rgba(15, 36, 25, 0.06);
+-  transition: transform 0.22s ease;
+-  box-shadow: 0 4px 10px -4px rgba(15, 36, 25, 0.08);
++  box-shadow:
++    0 1px 0 rgba(255, 255, 255, 0.9) inset,
++    0 6px 14px -6px rgba(15, 36, 25, 0.12);
++  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
++              box-shadow 0.24s;
+ }
+ .hub-card:hover .hub-card-icon {
+-  transform: scale(1.06);
++  transform: scale(1.05) rotate(-1.5deg);
++  box-shadow:
++    0 1px 0 rgba(255, 255, 255, 0.9) inset,
++    0 10px 20px -8px color-mix(in srgb, var(--accent, #10B981) 35%, rgba(15, 36, 25, 0.15));
+ }
+ .hub-card-icon img {
+-  width: 22px;
+-  height: 22px;
++  width: 26px;
++  height: 26px;
+   object-fit: contain;
+ }
+ .hub-card-fallback {
+   font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
+   font-weight: 700;
+-  font-size: 16px;
++  font-size: 19px;
+   color: var(--brand-deep);
+   letter-spacing: -0.02em;
+ }
+@@ -105,36 +183,61 @@
+ .hub-card-meta {
+   min-width: 0;
+   flex: 1;
+-  line-height: 1.2;
++  display: flex;
++  flex-direction: column;
++  gap: 3px;
++  padding-top: 1px;
+ }
+ .hub-card-title {
+   font-weight: 600;
+-  font-size: 13.5px;
++  font-size: 14.5px;
+   color: var(--fg);
+-  letter-spacing: -0.01em;
++  letter-spacing: -0.012em;
++  line-height: 1.25;
++  /* 长标题最多 2 行 */
++  display: -webkit-box;
++  -webkit-line-clamp: 2;
++  -webkit-box-orient: vertical;
+   overflow: hidden;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
+ }
+ .hub-card-sub {
+-  font-size: 11px;
++  font-size: 12px;
+   color: var(--fg-mute);
+-  margin-top: 3px;
++  line-height: 1.4;
++  display: -webkit-box;
++  -webkit-line-clamp: 2;
++  -webkit-box-orient: vertical;
+   overflow: hidden;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
+   transition: color 0.18s;
+ }
+ .hub-card:hover .hub-card-sub {
+   color: var(--fg-dim);
+ }
+ .hub-card-host {
+-  font-size: 11px;
++  font-size: 10.5px;
+   color: var(--fg-faint);
+   font-family: "JetBrains Mono", ui-monospace, monospace;
+-  margin-top: 3px;
++  letter-spacing: 0.01em;
++  margin-top: 2px;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+ }
++
++.hub-card-arrow {
++  position: absolute;
++  top: 14px;
++  right: 14px;
++  width: 14px;
++  height: 14px;
++  color: var(--fg-mute);
++  opacity: 0;
++  transform: translate(-3px, 3px);
++  transition: opacity 0.22s, transform 0.22s, color 0.18s;
++}
++.hub-card:hover .hub-card-arrow {
++  opacity: 0.85;
++  transform: translate(0, 0);
++  color: var(--accent, var(--brand));
++}
+ </style>
+diff -ruN a/web/src/components/NavBar.vue b/web/src/components/NavBar.vue
+--- a/web/src/components/NavBar.vue	2026-04-26 01:52:11.526420463 +0000
++++ b/web/src/components/NavBar.vue	2026-04-26 01:52:11.625421040 +0000
+@@ -11,6 +11,22 @@
+           </span>
+         </a>
+ 
++        <!-- 顶部搜索:仅在主页显示 -->
++        <div v-if="route.path === '/'" class="nav-search">
++          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
++            <circle cx="11" cy="11" r="8"/>
++            <path d="m21 21-4.3-4.3"/>
++          </svg>
++          <input
++            ref="searchInput"
++            v-model="globalSearch"
++            type="text"
++            :placeholder="searchPlaceholder"
++            aria-label="搜索工具"
++          />
++          <kbd>⌘K</kbd>
++        </div>
++
+         <!-- 中部链接 + 右侧操作 -->
+         <div class="flex items-center gap-1.5">
+           <a href="#/" class="nav-link" :class="route.path === '/' && 'nav-link-active'">主页</a>
+@@ -77,16 +93,23 @@
+ import { currentUser, isAdmin, sessionLoaded, logout } from "../session.js";
+ import { route, navigate } from "../router.js";
+ import { api } from "../api.js";
++import { globalSearch } from "../searchStore.js";
+ 
+ const open = ref(false);
+ const dropdownRef = ref(null);
+-const siteName = ref("Hub");
++const searchInput = ref(null);
++const siteName = ref("栖枢");
++const totalCards = ref(0);
+ 
+ const initial = computed(() => {
+   const n = currentUser.value?.name || currentUser.value?.email || "?";
+   return n.charAt(0).toUpperCase();
+ });
+ 
++const searchPlaceholder = computed(() =>
++  totalCards.value > 0 ? `搜索 ${totalCards.value} 个工具…` : "搜索工具…"
++);
++
+ async function onLogout() {
+   open.value = false;
+   await logout();
+@@ -99,14 +122,31 @@
+   }
+ }
+ 
++function onKey(e) {
++  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
++    e.preventDefault();
++    if (route.path !== "/") navigate("/");
++    // 等下一帧让搜索框挂载完毕
++    requestAnimationFrame(() => searchInput.value?.focus());
++  } else if (e.key === "Escape" && globalSearch.value) {
++    globalSearch.value = "";
++    searchInput.value?.blur();
++  }
++}
++
+ onMounted(async () => {
+   document.addEventListener("click", onClickOutside);
++  document.addEventListener("keydown", onKey);
+   try {
+     const data = await api.get("/homepage");
+     if (data.siteName) siteName.value = data.siteName;
++    if (Array.isArray(data.cards)) totalCards.value = data.cards.length;
+   } catch {}
+ });
+-onUnmounted(() => document.removeEventListener("click", onClickOutside));
++onUnmounted(() => {
++  document.removeEventListener("click", onClickOutside);
++  document.removeEventListener("keydown", onKey);
++});
+ </script>
+ 
+ <style scoped>
+@@ -135,6 +175,7 @@
+   padding: 4px 6px 4px 4px;
+   border-radius: 12px;
+   transition: background-color 0.15s;
++  flex-shrink: 0;
+ }
+ .brand-link:hover {
+   background-color: rgba(255, 255, 255, 0.5);
+@@ -157,6 +198,60 @@
+   margin-top: 2px;
+ }
+ 
++/* 顶部搜索条 — 占据中部弹性空间 */
++.nav-search {
++  flex: 1;
++  min-width: 0;
++  max-width: 520px;
++  margin: 0 8px;
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  padding: 7px 12px;
++  border-radius: 12px;
++  background: rgba(255, 255, 255, 0.55);
++  border: 1px solid rgba(255, 255, 255, 0.7);
++  transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s;
++}
++.nav-search:focus-within {
++  background: rgba(255, 255, 255, 0.85);
++  border-color: rgba(16, 185, 129, 0.45);
++  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
++}
++.nav-search svg {
++  width: 15px;
++  height: 15px;
++  color: var(--fg-mute);
++  flex-shrink: 0;
++}
++.nav-search input {
++  flex: 1;
++  min-width: 0;
++  background: transparent;
++  border: 0;
++  outline: 0;
++  font: inherit;
++  font-size: 13.5px;
++  color: var(--fg);
++  padding: 1px 0;
++}
++.nav-search input::placeholder {
++  color: var(--fg-mute);
++}
++.nav-search kbd {
++  font-family: "JetBrains Mono", ui-monospace, monospace;
++  background: rgba(15, 36, 25, 0.06);
++  color: var(--fg-dim);
++  padding: 2px 7px;
++  border-radius: 5px;
++  font-size: 10.5px;
++  border: 1px solid rgba(15, 36, 25, 0.04);
++  flex-shrink: 0;
++}
++@media (max-width: 720px) {
++  .nav-search { display: none; }
++}
++
+ .nav-link {
+   color: var(--fg-dim);
+   text-decoration: none;
+diff -ruN a/web/src/pages/HomePage.vue b/web/src/pages/HomePage.vue
+--- a/web/src/pages/HomePage.vue	2026-04-26 01:52:11.535420516 +0000
++++ b/web/src/pages/HomePage.vue	2026-04-26 01:52:11.627421052 +0000
+@@ -8,8 +8,8 @@
+       </div>
+ 
+       <h1 class="hero-title">
+-        <template v-if="siteName === 'Hub'">
+-          挑一个工具,<br /><em>开始今天的事</em>。
++        <template v-if="isDefaultName">
++          <span class="hero-slogan">挑一个工具,<em>开始今天的事</em>。</span>
+         </template>
+         <template v-else>
+           {{ siteName }}<em class="dot">.</em>
+@@ -23,21 +23,6 @@
+       <p v-else class="hero-lede">一处汇集你常用工具的入口面板。</p>
+     </header>
+ 
+-    <!-- 玻璃搜索条 -->
+-    <div class="glass-search">
+-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+-        <circle cx="11" cy="11" r="8"/>
+-        <path d="m21 21-4.3-4.3"/>
+-      </svg>
+-      <input
+-        ref="searchInput"
+-        v-model="search"
+-        type="text"
+-        :placeholder="searchPlaceholder"
+-      />
+-      <kbd>⌘K</kbd>
+-    </div>
+-
+     <!-- 加载中 -->
+     <div v-if="loading" class="py-20 text-center">
+       <div class="inline-flex items-center gap-3 text-fg-dim text-sm">
+@@ -71,13 +56,12 @@
+       </div>
+     </div>
+ 
+-    <!-- Bento 板块 -->
+-    <div v-else class="bento-grid">
++    <!-- 板块 — 每个板块整行 -->
++    <div v-else class="section-stack">
+       <section
+         v-for="(sec, idx) in sections"
+         :key="sec.id"
+         class="bento-group animate-fade-up"
+-        :class="bentoSpan(idx)"
+         :style="{ '--accent': accentFor(idx), animationDelay: `${idx * 50}ms` }"
+       >
+         <header class="sec-head">
+@@ -99,7 +83,6 @@
+       <section
+         v-if="orphanCards.length"
+         class="bento-group animate-fade-up"
+-        :class="bentoSpan(sections.length)"
+         :style="{ '--accent': accentFor(sections.length), animationDelay: `${sections.length * 50}ms` }"
+       >
+         <header class="sec-head">
+@@ -121,17 +104,21 @@
+ import { api } from "../api.js";
+ import CardTile from "../components/CardTile.vue";
+ import { currentUser } from "../session.js";
++import { globalSearch } from "../searchStore.js";
+ 
+ const sections = ref([]);
+ const cards = ref([]);
+-const siteName = ref("Hub");
++const siteName = ref("栖枢");
+ const siteDescription = ref("");
+ const loading = ref(true);
+-const search = ref("");
+-const searchInput = ref(null);
++const search = globalSearch; // 顶部 NavBar 提供输入框
+ 
+ const userName = computed(() => currentUser.value?.name || "");
+ 
++const isDefaultName = computed(
++  () => siteName.value === "栖枢" || siteName.value === "Hub",
++);
++
+ const greeting = computed(() => {
+   const h = new Date().getHours();
+   if (h < 6)  return "凌晨好";
+@@ -169,18 +156,7 @@
+   }).sort((a, b) => a.order - b.order);
+ });
+ 
+-const searchPlaceholder = computed(() =>
+-  cards.value.length > 0
+-    ? `搜索 ${cards.value.length} 个工具…`
+-    : "搜索工具…"
+-);
+-
+-// Bento 布局: 板块按位置交替宽窄, 仿照参考设计 (7/5/5/7 节奏)
+-function bentoSpan(idx) {
+-  const pattern = ["span-7", "span-5", "span-5", "span-7"];
+-  return "g-" + pattern[idx % pattern.length];
+-}
+-// 每个板块的强调色 — 4 色循环
++// 板块强调色 — 4 色循环
+ const ACCENTS = ["#10B981", "#06B6D4", "#F59E0B", "#0891B2"];
+ function accentFor(idx) { return ACCENTS[idx % ACCENTS.length]; }
+ const ICONS = ["✦", "⌬", "✿", "❀", "✺", "❖"];
+@@ -188,24 +164,13 @@
+ const EYEBROWS = ["每天打开", "代码 ·", "研究 ·", "娱乐 · 灵感", "·", "·"];
+ function secEyebrow(idx) { return EYEBROWS[idx % EYEBROWS.length]; }
+ 
+-function onKey(e) {
+-  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+-    e.preventDefault();
+-    searchInput.value?.focus();
+-  } else if (e.key === "Escape" && search.value) {
+-    search.value = "";
+-    searchInput.value?.blur();
+-  }
+-}
+-
+ onMounted(async () => {
+-  document.addEventListener("keydown", onKey);
+   clockTimer = setInterval(() => { now.value = new Date(); }, 60_000);
+   try {
+     const data = await api.get("/homepage");
+     sections.value = (data.sections || []).sort((a, b) => a.order - b.order);
+     cards.value = data.cards || [];
+-    siteName.value = data.siteName || "Hub";
++    siteName.value = data.siteName || "栖枢";
+     siteDescription.value = data.siteDescription || "";
+     document.title = siteName.value + " · 工具面板";
+   } catch (e) {
+@@ -216,7 +181,6 @@
+ });
+ 
+ onUnmounted(() => {
+-  document.removeEventListener("keydown", onKey);
+   if (clockTimer) clearInterval(clockTimer);
+ });
+ </script>
+@@ -224,7 +188,7 @@
+ <style scoped>
+ /* ── Hero ───────────────────────────────────────────────── */
+ .hero-block {
+-  padding: 48px 0 32px;
++  padding: 40px 0 28px;
+   text-align: center;
+   max-width: 760px;
+   margin: 0 auto;
+@@ -241,7 +205,7 @@
+   border-radius: 999px;
+   font-size: 12.5px;
+   color: var(--fg-dim);
+-  margin-bottom: 22px;
++  margin-bottom: 20px;
+   box-shadow: 0 4px 14px -4px rgba(15, 36, 25, 0.08);
+ }
+ .greet-pill b {
+@@ -276,10 +240,11 @@
+   font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
+   font-variation-settings: "opsz" 96;
+   font-weight: 700;
+-  font-size: clamp(40px, 6.5vw, 72px);
+-  line-height: 1.0;
+-  letter-spacing: -0.04em;
+-  margin-bottom: 18px;
++  /* 缩小、收紧字距,确保 "挑一个工具,开始今天的事。" 一行内显示 */
++  font-size: clamp(28px, 4.4vw, 48px);
++  line-height: 1.1;
++  letter-spacing: -0.03em;
++  margin-bottom: 14px;
+   color: var(--fg);
+ }
+ .hero-title em {
+@@ -296,12 +261,21 @@
+   -webkit-text-fill-color: var(--brand);
+   color: var(--brand);
+ }
++.hero-slogan {
++  display: inline-block;
++  white-space: nowrap;
++  max-width: 100%;
++}
++@media (max-width: 520px) {
++  /* 极窄屏允许换行,避免横向溢出 */
++  .hero-slogan { white-space: normal; }
++}
+ 
+ .hero-lede {
+-  font-size: 16.5px;
++  font-size: 15px;
+   color: var(--fg-dim);
+   max-width: 540px;
+-  margin: 0 auto 28px;
++  margin: 0 auto;
+   line-height: 1.55;
+ }
+ .hero-lede b {
+@@ -315,76 +289,21 @@
+   border: 1px solid rgba(15, 36, 25, 0.06);
+ }
+ 
+-/* ── Glass Search ──────────────────────────────────────── */
+-.glass-search {
+-  max-width: 600px;
+-  margin: 0 auto 44px;
+-  background: rgba(255, 255, 255, 0.65);
+-  backdrop-filter: blur(16px) saturate(160%);
+-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+-  border: 1px solid rgba(255, 255, 255, 0.85);
+-  border-radius: 16px;
+-  padding: 14px 18px;
++/* ── 板块纵向堆叠 — 每个板块占整整一行 ──────────────────── */
++.section-stack {
+   display: flex;
+-  align-items: center;
+-  gap: 12px;
+-  box-shadow:
+-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+-    0 8px 32px -12px rgba(15, 36, 25, 0.10);
+-  transition: border-color 0.2s, box-shadow 0.2s;
+-}
+-.glass-search:focus-within {
+-  border-color: rgba(16, 185, 129, 0.50);
+-  box-shadow:
+-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+-    0 0 0 4px rgba(16, 185, 129, 0.12),
+-    0 8px 32px -12px rgba(16, 185, 129, 0.20);
+-}
+-.glass-search svg {
+-  width: 18px;
+-  height: 18px;
+-  color: var(--fg-mute);
+-  flex-shrink: 0;
+-}
+-.glass-search input {
+-  flex: 1;
+-  background: transparent;
+-  border: 0;
+-  outline: 0;
+-  font: inherit;
+-  font-size: 15.5px;
+-  color: var(--fg);
+-}
+-.glass-search input::placeholder {
+-  color: var(--fg-mute);
+-}
+-.glass-search kbd {
+-  font-family: "JetBrains Mono", ui-monospace, monospace;
+-  background: rgba(15, 36, 25, 0.06);
+-  color: var(--fg-dim);
+-  padding: 3px 8px;
+-  border-radius: 6px;
+-  font-size: 11px;
+-  border: 1px solid rgba(15, 36, 25, 0.04);
+-  flex-shrink: 0;
++  flex-direction: column;
++  gap: 18px;
++  margin-top: 36px;
+ }
+ 
+-/* ── Bento Grid ────────────────────────────────────────── */
+-.bento-grid {
+-  display: grid;
+-  grid-template-columns: repeat(12, 1fr);
+-  gap: 14px;
+-}
+-@media (max-width: 980px) { .bento-grid { grid-template-columns: repeat(6, 1fr); } }
+-@media (max-width: 580px) { .bento-grid { grid-template-columns: 1fr; } }
+-
+ .bento-group {
+   background: rgba(255, 255, 255, 0.62);
+   backdrop-filter: blur(20px) saturate(160%);
+   -webkit-backdrop-filter: blur(20px) saturate(160%);
+   border: 1px solid rgba(255, 255, 255, 0.80);
+   border-radius: 24px;
+-  padding: 22px 22px 20px;
++  padding: 24px 24px 22px;
+   box-shadow:
+     0 1px 0 rgba(255, 255, 255, 0.85) inset,
+     0 12px 36px -16px rgba(15, 36, 25, 0.12);
+@@ -394,14 +313,14 @@
+ .bento-group::before {
+   content: "";
+   position: absolute;
+-  top: -40px;
+-  right: -40px;
+-  width: 140px;
+-  height: 140px;
++  top: -60px;
++  right: -60px;
++  width: 220px;
++  height: 220px;
+   background: var(--accent, var(--brand));
+   border-radius: 50%;
+-  opacity: 0.18;
+-  filter: blur(40px);
++  opacity: 0.16;
++  filter: blur(60px);
+   z-index: 0;
+   pointer-events: none;
+ }
+@@ -410,20 +329,11 @@
+   z-index: 1;
+ }
+ 
+-.g-span-7 { grid-column: span 7; }
+-.g-span-5 { grid-column: span 5; }
+-@media (max-width: 980px) {
+-  .g-span-7, .g-span-5 { grid-column: span 6; }
+-}
+-@media (max-width: 580px) {
+-  .g-span-7, .g-span-5 { grid-column: span 1; }
+-}
+-
+ .sec-head {
+   display: flex;
+   align-items: baseline;
+   justify-content: space-between;
+-  margin-bottom: 16px;
++  margin-bottom: 18px;
+   gap: 10px;
+ }
+ .sec-head h2 {
+@@ -466,9 +376,16 @@
+   border: 1px solid rgba(15, 36, 25, 0.05);
+ }
+ 
++/* 一行 3 张卡片 */
+ .cards-grid {
+   display: grid;
+-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+-  gap: 8px;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: 12px;
++}
++@media (max-width: 880px) {
++  .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++}
++@media (max-width: 540px) {
++  .cards-grid { grid-template-columns: 1fr; }
+ }
+ </style>
+diff -ruN a/web/src/searchStore.js b/web/src/searchStore.js
+--- a/web/src/searchStore.js	1970-01-01 00:00:00.000000000 +0000
++++ b/web/src/searchStore.js	2026-04-26 01:52:11.634421092 +0000
+@@ -0,0 +1,10 @@
++// 全局搜索状态:
++// 顶部 NavBar 提供输入框,HomePage 订阅并过滤卡片。
++// 简单单文件单例 ref,跨组件共享(无需 Pinia)。
++import { ref } from "vue";
++
++export const globalSearch = ref("");
++
++export function clearSearch() {
++  globalSearch.value = "";
++}
+diff -ruN a/web/tailwind.config.js b/web/tailwind.config.js
+--- a/web/tailwind.config.js	2026-04-26 01:52:11.539420539 +0000
++++ b/web/tailwind.config.js	2026-04-26 01:52:11.634421092 +0000
+@@ -1,6 +1,6 @@
+ /** @type {import('tailwindcss').Config} */
+ //
+-//  Hub · 柔绿玻璃主题 (Soft Mint Glass)
++//  栖枢 · 柔绿玻璃主题 (Soft Mint Glass)
+ //
+ //  设计语言:
+ //    极浅薄荷底 + 4 层 mesh 渐变 (薄荷 / 嫩绿 / 浅青 / 暖米) + 半透明白色玻璃 surface

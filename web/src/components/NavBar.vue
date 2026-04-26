@@ -11,6 +11,22 @@
           </span>
         </a>
 
+        <!-- 顶部搜索:仅在主页显示 -->
+        <div v-if="route.path === '/'" class="nav-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input
+            ref="searchInput"
+            v-model="globalSearch"
+            type="text"
+            :placeholder="searchPlaceholder"
+            aria-label="搜索工具"
+          />
+          <kbd>⌘K</kbd>
+        </div>
+
         <!-- 中部链接 + 右侧操作 -->
         <div class="flex items-center gap-1.5">
           <a href="#/" class="nav-link" :class="route.path === '/' && 'nav-link-active'">主页</a>
@@ -77,15 +93,22 @@ import { computed, ref, onMounted, onUnmounted } from "vue";
 import { currentUser, isAdmin, sessionLoaded, logout } from "../session.js";
 import { route, navigate } from "../router.js";
 import { api } from "../api.js";
+import { globalSearch } from "../searchStore.js";
 
 const open = ref(false);
 const dropdownRef = ref(null);
-const siteName = ref("Hub");
+const searchInput = ref(null);
+const siteName = ref("栖枢");
+const totalCards = ref(0);
 
 const initial = computed(() => {
   const n = currentUser.value?.name || currentUser.value?.email || "?";
   return n.charAt(0).toUpperCase();
 });
+
+const searchPlaceholder = computed(() =>
+  totalCards.value > 0 ? `搜索 ${totalCards.value} 个工具…` : "搜索工具…"
+);
 
 async function onLogout() {
   open.value = false;
@@ -99,14 +122,31 @@ function onClickOutside(e) {
   }
 }
 
+function onKey(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    e.preventDefault();
+    if (route.path !== "/") navigate("/");
+    // 等下一帧让搜索框挂载完毕
+    requestAnimationFrame(() => searchInput.value?.focus());
+  } else if (e.key === "Escape" && globalSearch.value) {
+    globalSearch.value = "";
+    searchInput.value?.blur();
+  }
+}
+
 onMounted(async () => {
   document.addEventListener("click", onClickOutside);
+  document.addEventListener("keydown", onKey);
   try {
     const data = await api.get("/homepage");
     if (data.siteName) siteName.value = data.siteName;
+    if (Array.isArray(data.cards)) totalCards.value = data.cards.length;
   } catch {}
 });
-onUnmounted(() => document.removeEventListener("click", onClickOutside));
+onUnmounted(() => {
+  document.removeEventListener("click", onClickOutside);
+  document.removeEventListener("keydown", onKey);
+});
 </script>
 
 <style scoped>
@@ -135,6 +175,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside));
   padding: 4px 6px 4px 4px;
   border-radius: 12px;
   transition: background-color 0.15s;
+  flex-shrink: 0;
 }
 .brand-link:hover {
   background-color: rgba(255, 255, 255, 0.5);
@@ -155,6 +196,60 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside));
   font-weight: 500;
   letter-spacing: 0.02em;
   margin-top: 2px;
+}
+
+/* 顶部搜索条 — 占据中部弹性空间 */
+.nav-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+  margin: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s;
+}
+.nav-search:focus-within {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+.nav-search svg {
+  width: 15px;
+  height: 15px;
+  color: var(--fg-mute);
+  flex-shrink: 0;
+}
+.nav-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--fg);
+  padding: 1px 0;
+}
+.nav-search input::placeholder {
+  color: var(--fg-mute);
+}
+.nav-search kbd {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  background: rgba(15, 36, 25, 0.06);
+  color: var(--fg-dim);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  border: 1px solid rgba(15, 36, 25, 0.04);
+  flex-shrink: 0;
+}
+@media (max-width: 720px) {
+  .nav-search { display: none; }
 }
 
 .nav-link {
