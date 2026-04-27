@@ -467,10 +467,49 @@ func (h *FaviconHandler) writeImageFromDataURL(c echo.Context, dataURL, fallback
 // ─── Admin ────────────────────────────────────────────────────────────────
 
 func (h *FaviconHandler) listAdmin(c echo.Context) error {
-	rows, err := h.Favicons.List()
+	// 数据来源是"管理员当前设置的卡片表",不是"已经拉过图标的缓存表"。
+	// 这样:
+	//   - 管理员刚加的卡片就立刻在这一页可见,不必等到有人访问主页触发懒抓
+	//   - 每个卡片的 origin 都明确暴露 + 可点 "刷新",再次保证只针对管理员
+	//     设置的当前 URL 抓取(refreshAdmin 还会再校验一次 ReferencesOrigin)
+	//   - 老的、已经没有任何卡片再用的 origin(orphan)也仍然显示出来,管理员
+	//     可以一眼把它们删掉,避免缓存表里堆历史垃圾
+	//
+	// 顺序:先列卡片对应的 origin(按 cards 表的出现顺序),再附 orphan。
+	allCards, err := h.Cards.FindAll()
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
 	}
+	cacheRows, err := h.Favicons.List()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "查询失败")
+	}
+
+	// origin → cache row 索引(后面取 contentType / fetchedAt / dataURL 等)
+	cacheByOrigin := make(map[string]repository.FaviconRow, len(cacheRows))
+	for _, r := range cacheRows {
+		cacheByOrigin[r.Origin] = r
+	}
+
+	// 收集 distinct origin。先按卡片顺序,后挂 orphan。
+	seen := make(map[string]bool)
+	orderedOrigins := make([]string, 0)
+	for _, card := range allCards {
+		origin := canonicalOrigin(card.URL)
+		if origin == "" || seen[origin] {
+			continue
+		}
+		seen[origin] = true
+		orderedOrigins = append(orderedOrigins, origin)
+	}
+	for _, r := range cacheRows {
+		if seen[r.Origin] {
+			continue
+		}
+		seen[r.Origin] = true
+		orderedOrigins = append(orderedOrigins, r.Origin)
+	}
+
 	type cardRef struct {
 		Title       string `json:"title"`
 		SectionName string `json:"sectionName"`
@@ -483,22 +522,32 @@ func (h *FaviconHandler) listAdmin(c echo.Context) error {
 		FailedAttempts int       `json:"failedAttempts"`
 		LastError      string    `json:"lastError,omitempty"`
 		HasData        bool      `json:"hasData"`
-		Cards          []cardRef `json:"cards"`
+		// Cached 区分"还没抓过(只在卡片表里)"与"已经有缓存行(可能是 ok / 错 / 空)"。
+		// 前端用它来决定是否显示 "删除" 按钮 — 没缓存就没有可删的对象。
+		Cached bool      `json:"cached"`
+		Cards  []cardRef `json:"cards"`
 	}
-	out := make([]adminRow, 0, len(rows))
-	for _, r := range rows {
-		// 关联的卡片(title + section name)。失败不致命,空数组而已。
-		refs, _ := h.Cards.CardsByOrigin(r.Origin)
+	out := make([]adminRow, 0, len(orderedOrigins))
+	for _, origin := range orderedOrigins {
+		// CardsByOrigin 内部 LEFT JOIN sections,直接拿到 title + 板块名。
+		// origin 是 distinct 的,所以这里的查询次数 = distinct origin 数,
+		// 实际站点很小不必优化成单次 IN 查询。
+		refs, _ := h.Cards.CardsByOrigin(origin)
 		cards := make([]cardRef, 0, len(refs))
 		for _, ref := range refs {
 			cards = append(cards, cardRef{Title: ref.Title, SectionName: ref.SectionName})
 		}
-		out = append(out, adminRow{
-			Origin: r.Origin, ContentType: r.ContentType, Source: r.Source,
-			FetchedAt: r.FetchedAt, FailedAttempts: r.FailedAttempts,
-			LastError: r.LastError, HasData: r.DataURL != "",
-			Cards: cards,
-		})
+		row := adminRow{Origin: origin, Cards: cards}
+		if cache, ok := cacheByOrigin[origin]; ok {
+			row.Cached = true
+			row.ContentType = cache.ContentType
+			row.Source = cache.Source
+			row.FetchedAt = cache.FetchedAt
+			row.FailedAttempts = cache.FailedAttempts
+			row.LastError = cache.LastError
+			row.HasData = cache.DataURL != ""
+		}
+		out = append(out, row)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": out})
 }

@@ -2,19 +2,26 @@
   <div class="space-y-5">
     <!-- 标题已经由侧边栏给出,这里不再重复"图标缓存"以及说明文案。 -->
     <div class="admin-sticky-head">
-      <!-- 工具栏:搜索 + 抓取状态 + 计数。
-           三档状态:有图标(hasData) / 抓取失败(lastError 非空) / 空(无 data
-           也无错)。后两档是管理员最关心的"哪些站点抓不下来",所以做成 filter 而非
-           搜索字段。 -->
+      <!-- 工具栏:搜索 + 状态过滤 + 计数 + "抓取未抓取"快捷键(右端)。
+           状态四档:有图标 / 抓取失败 / 未抓取(只在卡片表) / 已建缓存但无数据。
+           "抓取未抓取" 是管理员第一次进这页最常做的事 —— 把刚加但还没有人触发懒抓
+           的卡片图标一键拉起来 —— 所以做成顶级动作而非嵌在 bulk-bar 里。 -->
       <div class="admin-toolbar">
         <input v-model="search" placeholder="搜索 origin / 卡片 / 板块…" class="input admin-search" />
         <select v-model="statusFilter" class="input admin-filter">
           <option value="">全部状态</option>
           <option value="ok">有图标</option>
           <option value="error">抓取失败</option>
-          <option value="empty">无数据</option>
+          <option value="uncached">未抓取</option>
+          <option value="empty">已建缓存但无数据</option>
         </select>
         <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 条</span>
+        <button @click="onFetchAllUncached"
+                :disabled="bulkBusy || uncachedCount === 0"
+                :title="uncachedCount === 0 ? '没有待抓取的卡片' : ''"
+                class="btn btn-primary btn-sm admin-action">
+          {{ bulkBusy && bulkAction === 'fetch-uncached' ? '抓取中…' : `抓取未抓取 (${uncachedCount})` }}
+        </button>
       </div>
     </div>
 
@@ -86,14 +93,17 @@
                 </ul>
               </td>
               <td class="px-4 py-3 text-xs text-fg-dim font-mono">{{ r.contentType }}</td>
-              <td class="px-4 py-3 text-xs text-fg-dim">{{ formatTime(r.fetchedAt) }}</td>
+              <td class="px-4 py-3 text-xs text-fg-dim">{{ r.cached ? formatTime(r.fetchedAt) : '未抓取' }}</td>
               <td class="px-4 py-3 text-xs text-danger truncate max-w-xs">{{ r.lastError }}</td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 <button @click="onRefresh(r.origin)"
                         :disabled="(r.cards || []).length === 0"
                         :title="(r.cards || []).length === 0 ? '无关联卡片,无法刷新' : ''"
-                        class="btn btn-ghost btn-sm">刷新</button>
-                <button @click="onDelete(r.origin)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
+                        class="btn btn-ghost btn-sm">{{ r.cached ? '刷新' : '抓取' }}</button>
+                <!-- 没缓存行就没有可删的对象,藏起来避免 404,也避免管理员误以为
+                     "删了卡片就消失" — 真正的卡片删除走"卡片"那一栏。 -->
+                <button v-if="r.cached" @click="onDelete(r.origin)"
+                        class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
           </tbody>
@@ -123,10 +133,15 @@ const bulkBusy = ref(false);
 const bulkAction = ref("");         // "refresh" | "delete" — 控制按钮 loading 文字
 const PAGE_SIZE = 10;
 
-// faviconStatus 三档:有图标 / 抓取失败 / 既无数据也无错(冷启动 / 待抓)
+// faviconStatus 四档:
+//   ok       — 已成功抓取,有图标
+//   error    — 已尝试但失败,缓存表里有 lastError
+//   empty    — 缓存表里有空行(失败重试间歇 / 正在抓)
+//   uncached — 仅在卡片表里,缓存表无任何记录(管理员刚加的卡 / 没人访问过)
 function faviconStatus(r) {
   if (r.hasData) return "ok";
   if (r.lastError) return "error";
+  if (!r.cached) return "uncached";
   return "empty";
 }
 
@@ -156,6 +171,11 @@ watch([search, statusFilter], () => { page.value = 1; });
 
 function clearSelection() { selected.value = {}; }
 const selectedCount = computed(() => Object.values(selected.value).filter(Boolean).length);
+// 待抓取计数 — 用于 "抓取未抓取" 按钮的 label 与 disabled 判定。
+// 必须有关联卡片(后端会拒绝无引用的 origin),所以两个条件都要满足。
+const uncachedCount = computed(() =>
+  items.value.filter(r => !r.cached && (r.cards || []).length > 0).length
+);
 const pageAllChecked = computed(() =>
   pagedItems.value.length > 0 && pagedItems.value.every(r => selected.value[r.origin])
 );
@@ -186,9 +206,13 @@ async function load() {
 }
 
 async function onRefresh(origin) {
+  // 区分"首抓"与"刷新":对管理员来说,刚加的卡片这里是第一次抓,
+  // toast 提示用"已抓取"更顺;对已有缓存,用"已刷新"。
+  const r = items.value.find(x => x.origin === origin);
+  const wasCached = !!(r && r.cached);
   try {
     await api.post("/admin/favicons/refresh", { origin });
-    okToast("图标缓存已刷新");
+    okToast(wasCached ? "图标缓存已刷新" : "图标已抓取");
     await load();
   } catch (e) { errToast(e.message); }
 }
@@ -249,21 +273,34 @@ async function onBulkDelete() {
   if (bulkBusy.value) return;
   const origins = Object.keys(selected.value).filter(o => selected.value[o]);
   if (origins.length === 0) return;
-  const sample = origins.slice(0, 5).map(o => "· " + o).join("\n");
-  const more = origins.length > 5 ? `\n…还有 ${origins.length - 5} 条` : "";
+  // 没有缓存行的 origin 不是"已抓取"过的,DELETE 会 404,先过滤掉。
+  // 这是把 "未抓取" 状态的卡片也展示在列表里之后必须做的过滤 —
+  // 原版默认每行都有缓存,现在不再成立。
+  const deletable = origins.filter(o => {
+    const r = items.value.find(x => x.origin === o);
+    return r && r.cached;
+  });
+  const skipped = origins.length - deletable.length;
+  if (deletable.length === 0) {
+    errToast(`选中的 ${origins.length} 条都未抓取,没有可删除的缓存`);
+    return;
+  }
+  const sample = deletable.slice(0, 5).map(o => "· " + o).join("\n");
+  const more = deletable.length > 5 ? `\n…还有 ${deletable.length - 5} 条` : "";
+  const skipDetail = skipped > 0 ? `\n\n(跳过 ${skipped} 条未抓取的 origin)` : "";
   const ok = await useConfirm({
     title: "批量删除图标缓存",
-    message: `确认删除选中的 ${origins.length} 条缓存?`,
-    detail: "再访问相关卡片时会按需重新抓取。\n\n" + sample + more,
+    message: `确认删除选中的 ${deletable.length} 条缓存?`,
+    detail: "再访问相关卡片时会按需重新抓取。\n\n" + sample + more + skipDetail,
     kind: "danger",
-    confirmText: `删除 ${origins.length} 条`,
+    confirmText: `删除 ${deletable.length} 条`,
   });
   if (!ok) return;
 
   bulkBusy.value = true;
   bulkAction.value = "delete";
   let okCount = 0, failCount = 0;
-  for (const origin of origins) {
+  for (const origin of deletable) {
     try {
       await api.delete("/admin/favicons/" + encodeURIComponent(origin));
       delete selected.value[origin];
@@ -274,7 +311,32 @@ async function onBulkDelete() {
   }
   bulkBusy.value = false;
   bulkAction.value = "";
-  if (failCount === 0) okToast(`已删除 ${okCount} 条`);
+  const skipText = skipped > 0 ? ` · 跳过 ${skipped} 条未抓取` : "";
+  if (failCount === 0) okToast(`已删除 ${okCount} 条${skipText}`);
+  else errToast(`成功 ${okCount} / 失败 ${failCount}${skipText}`);
+  await load();
+}
+
+// 一键抓取所有"未抓取"卡片的图标。无确认框 — 抓取是非破坏操作,
+// 串行调用以避免一下子打爆外网或 SSRF 守卫的限流。
+async function onFetchAllUncached() {
+  if (bulkBusy.value) return;
+  const targets = items.value.filter(r => !r.cached && (r.cards || []).length > 0);
+  if (targets.length === 0) return;
+  bulkBusy.value = true;
+  bulkAction.value = "fetch-uncached";
+  let okCount = 0, failCount = 0;
+  for (const r of targets) {
+    try {
+      await api.post("/admin/favicons/refresh", { origin: r.origin });
+      okCount++;
+    } catch {
+      failCount++;
+    }
+  }
+  bulkBusy.value = false;
+  bulkAction.value = "";
+  if (failCount === 0) okToast(`已抓取 ${okCount} 条`);
   else errToast(`成功 ${okCount} / 失败 ${failCount}`);
   await load();
 }
