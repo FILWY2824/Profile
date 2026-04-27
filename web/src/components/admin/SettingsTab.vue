@@ -1,10 +1,8 @@
 <template>
   <div class="space-y-5 pb-24">
-    <!-- 顶部:页标题 + 副标题(全宽,与其它 tab 一致),不再放在左侧栏里。 -->
-    <header>
-      <h1 class="h-page">系统设置<span class="text-teal-300">.</span></h1>
-      <p class="text-fg-dim text-[15px] mt-2">所有改动只对新会话生效;部分项保存后立即热重载</p>
-    </header>
+    <!-- 标题已经由侧边栏给出,这里不再重复。
+         "所有改动只对新会话生效;部分项保存后立即热重载" 这条提示也并入下方
+         "未保存"横条的 hover 文案,无需占用顶部空间。 -->
 
     <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
       <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine mr-2 align-middle"></span>
@@ -12,27 +10,28 @@
     </div>
 
     <template v-else>
-      <!-- 顶部 filter bar:搜索 + 分类胶囊 + 计数。
-           分类原本是侧栏纵向列表,现在改横向 — 这样移动端、宽屏都更省空间,
-           也跟其它 tab 的 admin-toolbar 视觉一致。胶囊按 active 高亮,带 count
-           小角标,悬停态从侧栏样式移植过来。 -->
-      <div class="settings-toolbar">
-        <input v-model="search" placeholder="搜索键名 / 描述…" class="input settings-search" />
-        <div class="cat-pill-row">
-          <button @click="activeCategory = 'all'"
-                  :class="['cat-pill', activeCategory === 'all' && 'cat-pill-active']">
-            <span>全部</span>
-            <span class="cat-pill-count">{{ items.length }}</span>
-          </button>
-          <button v-for="c in categories" :key="c.key"
-                  @click="activeCategory = c.key"
-                  :class="['cat-pill', activeCategory === c.key && 'cat-pill-active']">
-            <span class="cat-pill-icon">{{ c.icon }}</span>
-            <span>{{ c.label }}</span>
-            <span class="cat-pill-count">{{ c.count }}</span>
-          </button>
+      <!-- 顶部 sticky 区:搜索 + 分类胶囊 + 计数。
+           滚动时这一段始终钉在 .admin-main 顶部,设置列表才是滚动主体。 -->
+      <div class="admin-sticky-head">
+        <div class="settings-toolbar">
+          <input v-model="search" placeholder="搜索键名 / 描述…" class="input settings-search" />
+          <div class="cat-pill-row">
+            <!-- "全部" 上保留计数,因为它就是"共多少条"的语义本身 — 这样
+                 删掉行尾"共 30 / 30 项"也不会丢信息。其它分类按用户要求只
+                 留 icon + 名,不再贴小计数,挤压更小、一行能塞下更多分类。 -->
+            <button @click="activeCategory = 'all'"
+                    :class="['cat-pill', activeCategory === 'all' && 'cat-pill-active']">
+              <span>全部</span>
+              <span class="cat-pill-count">{{ items.length }}</span>
+            </button>
+            <button v-for="c in categories" :key="c.key"
+                    @click="activeCategory = c.key"
+                    :class="['cat-pill', activeCategory === c.key && 'cat-pill-active']">
+              <span class="cat-pill-icon">{{ c.icon }}</span>
+              <span>{{ c.label }}</span>
+            </button>
+          </div>
         </div>
-        <span class="settings-count">共 {{ filteredItems.length }} / {{ items.length }} 项</span>
       </div>
 
       <!-- 已修改提示横条 — 原版藏在侧栏底,现在直接顶在设置列表上方,
@@ -90,47 +89,8 @@
         </div>
       </div>
 
-      <!-- 数据保留 / 一键清理 — 用户要求从侧栏移到主区。放在设置列表最下方,
-           因为它是破坏性操作,不应该抢在普通设置之前夺走视线。
-           用单独 surface 卡片 + 显眼的小标题与说明,内部仍是"复选 + 单清/批清"
-           的双模式。 -->
-      <section class="retention-section">
-        <div class="retention-head">
-          <div>
-            <h2 class="h-section">
-              数据保留 · 一键清理<span class="ic-accent">⌫</span>
-            </h2>
-            <p class="text-fg-dim text-sm mt-1.5">
-              勾选后点 "清理选中" 一次性清掉勾选项;也可以单独点每行的 "清理"。
-              <span class="text-warn-700">操作不可逆。</span>
-            </p>
-          </div>
-        </div>
-
-        <div class="surface retention-card">
-          <ul class="retention-list">
-            <li v-for="t in pruneTargets" :key="t.key"
-                :class="['retention-row', pruneSelected[t.key] && 'retention-row-on']">
-              <label class="retention-label">
-                <input type="checkbox" v-model="pruneSelected[t.key]" :disabled="pruneBusy" class="bulk-cb" />
-                <span class="retention-name">{{ t.label }}</span>
-              </label>
-              <button @click="pruneOne(t.key)" :disabled="pruneBusy"
-                      class="btn btn-ghost btn-sm">清理</button>
-            </li>
-          </ul>
-
-          <div class="retention-footer">
-            <button @click="selectAllPrune(true)" class="text-[12px] text-fg-dim hover:text-fg">全选</button>
-            <span class="text-fg-mute text-[12px]">·</span>
-            <button @click="selectAllPrune(false)" class="text-[12px] text-fg-dim hover:text-fg">清空</button>
-            <button @click="pruneBatch" :disabled="pruneBusy || pruneSelectedCount === 0"
-                    class="btn btn-secondary btn-sm ml-auto bulk-danger">
-              {{ pruneBusy ? '清理中…' : `清理选中 (${pruneSelectedCount})` }}
-            </button>
-          </div>
-        </div>
-      </section>
+      <!-- 数据保留 / 一键清理 已经被拆成单独的"数据清理" tab,
+           参见 components/admin/RetentionTab.vue。 -->
     </template>
 
     <!-- Floating save bar — 位置 / 视觉与原版一致 -->
@@ -152,7 +112,6 @@
 import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
-import { useConfirm } from "../../confirm.js";
 
 const items = ref([]);
 const dirty = ref({});
@@ -178,22 +137,8 @@ const hotReloadKeys = new Set([
 ]);
 function isHotReload(k) { return hotReloadKeys.has(k); }
 
-// ─── 数据保留 / 清理目标(原本在侧栏,现在移到主区底部)───────────────
-const pruneTargets = [
-  { key: "vcodes",               label: "过期验证码 (vcodes)" },
-  { key: "pending",              label: "过期待注册 (pending)" },
-  { key: "login-history",        label: "登录历史 (按保留天数)" },
-  { key: "activity-log",         label: "活动日志 (按保留天数)" },
-  { key: "oauth-codes",          label: "过期 OAuth 授权码" },
-  { key: "oauth-tokens-expired", label: "过期 OAuth token" },
-  { key: "favicons",             label: "全部图标缓存" },
-];
-const pruneSelected = ref({});
-const pruneBusy = ref(false);
-const pruneSelectedCount = computed(() => pruneTargets.filter(t => pruneSelected.value[t.key]).length);
-function selectAllPrune(v) {
-  for (const t of pruneTargets) pruneSelected.value[t.key] = v;
-}
+// 数据保留 / 一键清理 已经被拆出到 RetentionTab.vue。这里不再保留任何
+// pruneTargets / pruneOne / pruneBatch 逻辑。
 
 const categories = computed(() => {
   const counts = {};
@@ -260,63 +205,12 @@ async function save() {
   } catch (e) { errToast(e.message); } finally { busy.value = false; }
 }
 
-async function pruneOne(table) {
-  const target = pruneTargets.find(t => t.key === table);
-  const ok = await useConfirm({
-    title: "清理数据",
-    message: `确认清理 "${target?.label || table}"?`,
-    detail: "已被清理的数据无法恢复。",
-    kind: "danger",
-    confirmText: "立即清理",
-  });
-  if (!ok) return;
-  try {
-    const r = await api.post(`/admin/retention/${table}/prune`);
-    okToast(`已清理 ${r.removed ?? 0} 条 (${target?.label || table})`);
-  } catch (e) { errToast(e.message); }
-}
-
-async function pruneBatch() {
-  if (pruneBusy.value) return;
-  const sel = pruneTargets.filter(t => pruneSelected.value[t.key]);
-  if (sel.length === 0) return;
-  const ok = await useConfirm({
-    title: "批量清理",
-    message: `确认一键清理勾选的 ${sel.length} 类数据?`,
-    detail: sel.map(t => "· " + t.label).join("\n"),
-    kind: "danger",
-    confirmText: `清理 ${sel.length} 类`,
-  });
-  if (!ok) return;
-  pruneBusy.value = true;
-  let totalRemoved = 0;
-  let okCount = 0;
-  let failCount = 0;
-  for (const t of sel) {
-    try {
-      const r = await api.post(`/admin/retention/${t.key}/prune`);
-      totalRemoved += (r.removed || 0);
-      okCount++;
-    } catch (e) {
-      failCount++;
-      // 不打断整批,只在 toast 上报告失败次数
-      // eslint-disable-next-line no-console
-      console.warn(`prune ${t.key} failed:`, e.message);
-    }
-  }
-  pruneBusy.value = false;
-  if (failCount === 0) {
-    okToast(`已清理 ${okCount} 类、共 ${totalRemoved} 条`);
-  } else {
-    errToast(`完成 ${okCount} / 失败 ${failCount} · 共清理 ${totalRemoved} 条`);
-  }
-}
-
 onMounted(load);
 </script>
 
 <style scoped>
-/* 顶部工具条 — 与其它 tab 风格一致(input + 横向胶囊 + count) */
+/* 顶部工具条 — input + 横向胶囊。原本带"共 X / Y 项"已经移除,
+   全部胶囊上的计数承担了"总共多少"的语义。 */
 .settings-toolbar {
   display: flex;
   align-items: flex-start;
@@ -324,19 +218,11 @@ onMounted(load);
   flex-wrap: wrap;
 }
 .settings-search {
-  flex: 0 0 260px;
+  flex: 0 0 220px;
   max-width: 100%;
 }
-.settings-count {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--fg-mute);
-  white-space: nowrap;
-  align-self: center;
-  margin-left: auto;
-}
 
-/* 分类胶囊行 — 横向滚动以适配窄屏。 */
+/* 分类胶囊行 — 横向铺,优先一行铺满,放不下再 wrap。 */
 .cat-pill-row {
   display: flex;
   flex-wrap: wrap;
@@ -348,7 +234,8 @@ onMounted(load);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  /* 收紧水平 padding,使 8 个分类 + "全部" 在一行内更易塞下 */
+  padding: 7px 10px;
   border-radius: 999px;
   font-size: 12.5px;
   font-weight: 500;
@@ -378,6 +265,7 @@ onMounted(load);
   font-size: 13px;
   line-height: 1;
 }
+/* 仅 "全部" 上的计数还在用,其它分类的内置计数已被移除。 */
 .cat-pill-count {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10.5px;
@@ -434,75 +322,8 @@ onMounted(load);
   background-color: rgba(254, 243, 199, 0.45) !important;
 }
 
-/* 数据保留 / 一键清理 卡片 — 在主区底部独立成节 */
-.retention-section {
-  margin-top: 8px;
-  padding-top: 24px;
-  border-top: 1px dashed rgba(15, 36, 25, 0.10);
-}
-.retention-head {
-  margin-bottom: 12px;
-}
-.ic-accent {
-  font-style: italic;
-  font-weight: 500;
-  margin-left: 6px;
-  color: var(--brand);
-}
-.text-warn-700 { color: #B45309; font-weight: 500; }
-
-.retention-card {
-  padding: 6px 6px 10px;
-}
-.retention-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-}
-@media (min-width: 768px) {
-  .retention-list { grid-template-columns: 1fr 1fr; }
-}
-
-.retention-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  transition: background-color 0.14s;
-}
-.retention-row:hover {
-  background-color: rgba(255, 255, 255, 0.55);
-}
-.retention-row-on {
-  background-color: rgba(167, 243, 208, 0.30);
-}
-.retention-row-on:hover {
-  background-color: rgba(167, 243, 208, 0.42);
-}
-.retention-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--fg);
-  min-width: 0;
-}
-.retention-name {
-  flex: 1;
-  min-width: 0;
-}
-
-.retention-footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 10px 4px;
-  border-top: 1px solid rgba(15, 36, 25, 0.06);
-  margin-top: 4px;
-}
+/* 数据保留 / 一键清理的样式已经迁到 RetentionTab.vue。
+   .bulk-cb 仍然保留 — 万一未来设置项里也用到 checkbox 的话可以复用。 */
 .bulk-cb {
   accent-color: var(--brand);
   width: 16px;
@@ -510,13 +331,6 @@ onMounted(load);
   cursor: pointer;
   vertical-align: middle;
   flex-shrink: 0;
-}
-.bulk-danger {
-  color: var(--danger) !important;
-  border-color: rgba(220, 38, 38, 0.30) !important;
-}
-.bulk-danger:hover:not(:disabled) {
-  background-color: rgba(220, 38, 38, 0.08) !important;
 }
 
 .floating-save-bar {

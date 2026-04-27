@@ -205,6 +205,9 @@ func run() error {
 
 	(&handler.AdminCardsHandler{
 		Cards: cards, ActivityLog: activityLog,
+		// 联动:卡片新增 / URL 改动 / 删除时自动更新图标缓存(丢旧 + 抓新)。
+		// 见 internal/handler/favicon.go 的 EnsureFreshForOrigin / DropIfOrphan。
+		Favicons: faviconH,
 	}).Register(adminG.Group("/cards"))
 
 	(&handler.AdminSettingsHandler{

@@ -88,6 +88,7 @@ import CardsTab from "../components/admin/CardsTab.vue";
 import FaviconsTab from "../components/admin/FaviconsTab.vue";
 import OAuthClientsTab from "../components/admin/OAuthClientsTab.vue";
 import SettingsTab from "../components/admin/SettingsTab.vue";
+import RetentionTab from "../components/admin/RetentionTab.vue";
 import AuditTab from "../components/admin/AuditTab.vue";
 
 const topTabs = [{ id: "dashboard", label: "总览" }];
@@ -97,10 +98,12 @@ const contentTabs = [
   { id: "favicons", label: "图标缓存" },
 ];
 const systemTabs = [
-  { id: "users",    label: "用户" },
-  { id: "oauth",    label: "OAuth 客户端" },
-  { id: "settings", label: "系统设置" },
-  { id: "audit",    label: "审计日志" },
+  { id: "users",     label: "用户" },
+  { id: "oauth",     label: "OAuth 客户端" },
+  { id: "settings",  label: "系统设置" },
+  // 数据清理 — 原本嵌在"系统设置"里,作为独立板块更显眼也更合理
+  { id: "retention", label: "数据清理" },
+  { id: "audit",     label: "审计日志" },
 ];
 
 const active = ref("dashboard");
@@ -112,6 +115,7 @@ const map = {
   favicons: FaviconsTab,
   oauth: OAuthClientsTab,
   settings: SettingsTab,
+  retention: RetentionTab,
   audit: AuditTab,
 };
 const activeView = computed(() => map[active.value]);

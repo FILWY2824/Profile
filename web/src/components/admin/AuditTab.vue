@@ -1,42 +1,45 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">审计日志<span class="text-teal-300">.</span></h1>
-      <div class="audit-subtabs">
-        <button v-for="t in tabs" :key="t.id"
-                @click="setActive(t.id)"
-                :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
-          {{ t.label }}
-        </button>
+    <!-- 标题由侧边栏给出。子 tab(登录历史 / 活动日志)放在工具栏右端,
+         与搜索/筛选/计数同一行,这样既保留了"切子 tab"的入口又不再独占
+         一整行垂直空间。 -->
+    <div class="admin-sticky-head">
+      <!-- 工具栏因 tab 不同而不同。
+           登录历史:成功 / 失败 是最高频的查询维度,做成 filter。
+           活动日志:按 action 前缀(admin / auth / account)归档,管理员通常想看
+           "今天的管理操作"或"今天的登录尝试",前缀 filter 比 grep 直观。
+           审计本身只读,不加 checkbox / 批量按钮。
+           子 tab 切换器(登录历史 / 活动日志)在最右端 — 用 audit-subtabs
+           包裹时再加 admin-action(margin-left:auto)推到行尾。 -->
+      <div class="admin-toolbar">
+        <template v-if="active === 'login'">
+          <input v-model="loginSearch" placeholder="搜索邮箱 / IP / 原因…" class="input admin-search" />
+          <select v-model="loginResultFilter" class="input admin-filter">
+            <option value="">全部结果</option>
+            <option value="success">成功</option>
+            <option value="fail">失败</option>
+          </select>
+          <span class="admin-count">共 {{ filteredLoginRows.length }} / {{ loginTotal }} 条 (当前页)</span>
+        </template>
+        <template v-else>
+          <input v-model="activitySearch" placeholder="搜索用户 / action / 详情…" class="input admin-search" />
+          <select v-model="activityActionFilter" class="input admin-filter">
+            <option value="">全部操作</option>
+            <option value="admin.">管理操作 (admin.*)</option>
+            <option value="auth.">鉴权 (auth.*)</option>
+            <option value="account.">账户 (account.*)</option>
+            <option value="oauth.">OAuth (oauth.*)</option>
+          </select>
+          <span class="admin-count">共 {{ filteredActivityRows.length }} / {{ activityTotal }} 条 (当前页)</span>
+        </template>
+        <div class="audit-subtabs admin-action">
+          <button v-for="t in tabs" :key="t.id"
+                  @click="setActive(t.id)"
+                  :class="['audit-subtab', active === t.id && 'audit-subtab-active']">
+            {{ t.label }}
+          </button>
+        </div>
       </div>
-    </header>
-
-    <!-- 工具栏因 tab 不同而不同。
-         登录历史:成功 / 失败 是最高频的查询维度,做成 filter。
-         活动日志:按 action 前缀(admin / auth / account)归档,管理员通常想看
-         "今天的管理操作"或"今天的登录尝试",前缀 filter 比 grep 直观。
-         审计本身只读,不加 checkbox / 批量按钮。 -->
-    <div class="admin-toolbar">
-      <template v-if="active === 'login'">
-        <input v-model="loginSearch" placeholder="搜索邮箱 / IP / 原因…" class="input admin-search" />
-        <select v-model="loginResultFilter" class="input admin-filter">
-          <option value="">全部结果</option>
-          <option value="success">成功</option>
-          <option value="fail">失败</option>
-        </select>
-        <span class="admin-count">共 {{ filteredLoginRows.length }} / {{ loginTotal }} 条 (当前页)</span>
-      </template>
-      <template v-else>
-        <input v-model="activitySearch" placeholder="搜索用户 / action / 详情…" class="input admin-search" />
-        <select v-model="activityActionFilter" class="input admin-filter">
-          <option value="">全部操作</option>
-          <option value="admin.">管理操作 (admin.*)</option>
-          <option value="auth.">鉴权 (auth.*)</option>
-          <option value="account.">账户 (account.*)</option>
-          <option value="oauth.">OAuth (oauth.*)</option>
-        </select>
-        <span class="admin-count">共 {{ filteredActivityRows.length }} / {{ activityTotal }} 条 (当前页)</span>
-      </template>
     </div>
 
     <!-- 登录历史 -->
@@ -196,13 +199,6 @@ onMounted(loadLogin);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

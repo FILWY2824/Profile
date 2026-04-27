@@ -1,29 +1,28 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">用户<span class="text-teal-300">.</span></h1>
-      <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
-    </header>
-
-    <!-- 工具栏:搜索 + 角色 + 状态 + 计数。
-         用户列表是服务端分页的,所以 role / status 这两个 filter 走服务端
-         (后端 /admin/users 已经接受 ?role= 和 ?status= 参数,正好对接);
-         搜索仍在当前页内做,与原版一致 — 想全库搜索得后端加 q,本次不动。 -->
-    <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索邮箱 / 姓名…(当前页)" class="input admin-search" />
-      <select v-model="roleFilter" class="input admin-filter" @change="resetAndLoad">
-        <option value="">全部角色</option>
-        <option value="admin">管理员</option>
-        <option value="member">成员</option>
-        <option value="user">普通用户</option>
-      </select>
-      <select v-model="statusFilter" class="input admin-filter" @change="resetAndLoad">
-        <option value="">全部状态</option>
-        <option value="active">活跃</option>
-        <option value="banned">封禁</option>
-        <option value="disabled">禁用</option>
-      </select>
-      <span class="admin-count">共 {{ filteredUsers.length }} / {{ total }} 个 (当前页)</span>
+    <!-- 标题已经由侧边栏给出。"+ 新建用户" 并入 toolbar 末尾。 -->
+    <div class="admin-sticky-head">
+      <!-- 工具栏:搜索 + 角色 + 状态 + 计数 + 新建。
+           用户列表是服务端分页的,所以 role / status 这两个 filter 走服务端
+           (后端 /admin/users 已经接受 ?role= 和 ?status= 参数,正好对接);
+           搜索仍在当前页内做,与原版一致 — 想全库搜索得后端加 q,本次不动。 -->
+      <div class="admin-toolbar">
+        <input v-model="search" placeholder="搜索邮箱 / 姓名…(当前页)" class="input admin-search" />
+        <select v-model="roleFilter" class="input admin-filter" @change="resetAndLoad">
+          <option value="">全部角色</option>
+          <option value="admin">管理员</option>
+          <option value="member">成员</option>
+          <option value="user">普通用户</option>
+        </select>
+        <select v-model="statusFilter" class="input admin-filter" @change="resetAndLoad">
+          <option value="">全部状态</option>
+          <option value="active">活跃</option>
+          <option value="banned">封禁</option>
+          <option value="disabled">禁用</option>
+        </select>
+        <span class="admin-count">共 {{ filteredUsers.length }} / {{ total }} 个 (当前页)</span>
+        <button @click="openCreate" class="btn btn-primary admin-action">+ 新建用户</button>
+      </div>
     </div>
 
     <transition name="bulk">
@@ -317,13 +316,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

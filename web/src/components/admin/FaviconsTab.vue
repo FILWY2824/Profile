@@ -1,25 +1,21 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">图标缓存<span class="text-teal-300">.</span></h1>
-      <p class="text-fg-dim text-sm hidden md:block">
-        解析卡片站点 &lt;link rel="icon"&gt; 抓取精确图标
-      </p>
-    </header>
-
-    <!-- 工具栏:搜索 + 抓取状态 + 计数。
-         三档状态:有图标(hasData) / 抓取失败(lastError 非空) / 空(无 data
-         也无错)。后两档是管理员最关心的"哪些站点抓不下来",所以做成 filter 而非
-         搜索字段。 -->
-    <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索 origin / 卡片 / 板块…" class="input admin-search" />
-      <select v-model="statusFilter" class="input admin-filter">
-        <option value="">全部状态</option>
-        <option value="ok">有图标</option>
-        <option value="error">抓取失败</option>
-        <option value="empty">无数据</option>
-      </select>
-      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 条</span>
+    <!-- 标题已经由侧边栏给出,这里不再重复"图标缓存"以及说明文案。 -->
+    <div class="admin-sticky-head">
+      <!-- 工具栏:搜索 + 抓取状态 + 计数。
+           三档状态:有图标(hasData) / 抓取失败(lastError 非空) / 空(无 data
+           也无错)。后两档是管理员最关心的"哪些站点抓不下来",所以做成 filter 而非
+           搜索字段。 -->
+      <div class="admin-toolbar">
+        <input v-model="search" placeholder="搜索 origin / 卡片 / 板块…" class="input admin-search" />
+        <select v-model="statusFilter" class="input admin-filter">
+          <option value="">全部状态</option>
+          <option value="ok">有图标</option>
+          <option value="error">抓取失败</option>
+          <option value="empty">无数据</option>
+        </select>
+        <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 条</span>
+      </div>
     </div>
 
     <!-- 批量操作:这一页两个动作都有意义 — 批量刷新(订正失败的 origin)+
@@ -287,13 +283,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

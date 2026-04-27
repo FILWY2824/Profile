@@ -1,21 +1,22 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">卡片<span class="text-teal-300">.</span></h1>
-      <button @click="openCreate" class="btn btn-primary">+ 新建卡片</button>
-    </header>
-
-    <!-- 工具栏:搜索 + 板块筛选 + 计数。
-         板块筛选是用户明确要求的"按某个具体板块查看卡片",作为下拉框放在搜索旁。
-         "(未分组)" 选项让管理员能快速看到孤儿卡片。 -->
-    <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索标题 / URL / 板块…" class="input admin-search" />
-      <select v-model="sectionFilter" class="input admin-filter">
-        <option value="">全部板块</option>
-        <option value="__none__">(未分组)</option>
-        <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
-      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 张</span>
+    <!-- 顶部 sticky 区:工具栏始终钉在 .admin-main 顶部,下方表格滚动。
+         "+ 新建卡片" 按钮被并入 toolbar 末尾(margin-left:auto),
+         不再需要单独的 page-header。标题由左侧栏给出。 -->
+    <div class="admin-sticky-head">
+      <!-- 工具栏:搜索 + 板块筛选 + 计数 + 新建。
+           板块筛选是用户明确要求的"按某个具体板块查看卡片",作为下拉框放在搜索旁。
+           "(未分组)" 选项让管理员能快速看到孤儿卡片。 -->
+      <div class="admin-toolbar">
+        <input v-model="search" placeholder="搜索标题 / URL / 板块…" class="input admin-search" />
+        <select v-model="sectionFilter" class="input admin-filter">
+          <option value="">全部板块</option>
+          <option value="__none__">(未分组)</option>
+          <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+        <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 张</span>
+        <button @click="openCreate" class="btn btn-primary admin-action">+ 新建卡片</button>
+      </div>
     </div>
 
     <!-- 批量操作条 — 仅在选中至少一项时出现。删除走逐条 DELETE,后端的
@@ -280,13 +281,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

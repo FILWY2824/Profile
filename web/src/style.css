@@ -600,6 +600,58 @@
     color: var(--brand);
     letter-spacing: -0.025em;
   }
+
+  /* ── 管理后台 sticky 顶栏 ────────────────────────────────────────────────
+     每个 admin tab 的搜索框 / 过滤器 / 计数 / 主操作按钮被包在
+     <div class="admin-sticky-head"> 里。它在 .admin-main 的 overflow:auto
+     滚动容器内 sticky 在 top:0,下方表格 / 列表 / 卡片在它身后滚动。
+
+     视觉:
+       - 同站内"surface" 系一致的玻璃质感(rgba 白 + backdrop-blur)
+       - 但底色基于页面 mint cream(#F4FBF6)而非纯白,这样不会与下面的
+         surface 卡片"融在一起"看起来像个未完成的搜索条。
+       - z-index:10 仅高于 surface,低于 floating-save-bar(z:30)与 modal。
+
+     注意:不要给它加 padding-left/padding-right。它的水平边界完全跟随
+     parent(.admin-main-inner)的 padding,这样在窄屏切换 padding 时
+     sticky 区也跟着改,无需为媒体查询写额外的覆盖。 */
+  .admin-sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: rgba(244, 251, 246, 0.92);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    /* 关键:让 sticky 元素的顶边贴住 admin-main 视口顶,完全不动。
+       做法是用满 admin-main-inner 的 padding-top(桌面 24px / 移动 12px),
+       用 margin-top 把元素拉上去,再用同样的 padding-top 把内容压回原位。
+       这样:
+         scroll = 0     → 元素顶在 top:0,内容在 24px 处(视觉与原版一致)
+         scroll > 0     → 元素仍在 top:0,内容仍在 24px 处(完全不动)
+       原来 -12 / +12 的写法只能消掉一半,所以管理员仍然能看到一次"轻微跳动"。 */
+    margin-top: -24px;
+    padding-top: 24px;
+    padding-bottom: 12px;
+    /* 一根极淡的分隔线,提示下面的内容是滚动区域 */
+    border-bottom: 1px solid rgba(15, 36, 25, 0.06);
+    /* 内嵌多行控件(toolbar + audit subtabs)时统一上下间隔 */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  @media (max-width: 768px) {
+    /* 移动端 admin-main-inner 整体 padding 12px,offset 跟着改。
+       注意:移动端的整页滚动是由顶部 .admin-mobile-tabs(z:20)接管的,
+       本元素 z:10 自然落在它下方;不再承担"完全不动"的语义。 */
+    .admin-sticky-head {
+      margin-top: -12px;
+      padding-top: 12px;
+    }
+  }
+  /* 主操作按钮(+ 新建 / 刷新 …)放在 admin-toolbar 末尾,自动靠右 */
+  .admin-toolbar .admin-action {
+    margin-left: auto;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

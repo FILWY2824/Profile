@@ -1,9 +1,7 @@
 <template>
   <div class="space-y-8">
-    <header>
-      <h1 class="h-page">总览<span class="text-teal-300">.</span></h1>
-      <p class="text-fg-dim text-[15px] mt-2">站点统计与运行状况</p>
-    </header>
+    <!-- 标题已经由侧边栏给出,这里不再重复"总览"以及"站点统计与运行状况"
+         之类的副标题 — 那只是占据顶部空间。 -->
 
     <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
       <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine mr-2 align-middle"></span>
@@ -81,7 +79,7 @@
             <p class="text-xs text-fg-dim mt-3 leading-relaxed">
               <span class="text-teal-300">·</span>
               SQLite WAL 在大量写入后会膨胀,checkpoint 之后会压缩到很小;
-              如果"其它"持续增长,通常是图标缓存,可以在系统设置里一键清理。
+              如果"其它"持续增长,通常是图标缓存,可以在"数据清理"里一键清理。
             </p>
           </template>
         </div>

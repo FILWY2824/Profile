@@ -1,16 +1,15 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">板块<span class="text-teal-300">.</span></h1>
-      <button @click="openCreate" class="btn btn-primary">+ 新建板块</button>
-    </header>
-
-    <!-- 板块这一页"按板块过滤"是循环 — 板块本身就是分组维度,所以只放搜索框,
-         不再画"全部板块"那种下拉。这里的 admin-toolbar 与 CardsTab 同款样式
-         保持一致,但少一个 select。 -->
-    <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索名称 / slug / 描述…" class="input admin-search" />
-      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+    <!-- 标题已经由侧边栏给出。"+ 新建板块" 并入 toolbar 末尾。 -->
+    <div class="admin-sticky-head">
+      <!-- 板块这一页"按板块过滤"是循环 — 板块本身就是分组维度,所以只放搜索框,
+           不再画"全部板块"那种下拉。这里的 admin-toolbar 与 CardsTab 同款样式
+           保持一致,但少一个 select。 -->
+      <div class="admin-toolbar">
+        <input v-model="search" placeholder="搜索名称 / slug / 描述…" class="input admin-search" />
+        <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+        <button @click="openCreate" class="btn btn-primary admin-action">+ 新建板块</button>
+      </div>
     </div>
 
     <transition name="bulk">
@@ -218,13 +217,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

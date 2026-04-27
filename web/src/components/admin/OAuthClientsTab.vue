@@ -1,21 +1,20 @@
 <template>
   <div class="space-y-5">
-    <header class="admin-tab-head">
-      <h1 class="h-page">OAuth 客户端<span class="text-teal-300">.</span></h1>
-      <button @click="openCreate" class="btn btn-primary">+ 新建客户端</button>
-    </header>
-
-    <!-- 工具栏:搜索 + 状态(active/disabled)+ 计数。
-         这里的状态本身就是 OAuth 客户端最常用的"找下被关掉的应用"维度,
-         加这个 filter 比强行给搜索加 status: 前缀更直接。 -->
-    <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索名称 / Client ID / 描述…" class="input admin-search" />
-      <select v-model="statusFilter" class="input admin-filter">
-        <option value="">全部状态</option>
-        <option value="active">启用</option>
-        <option value="disabled">停用</option>
-      </select>
-      <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+    <!-- 标题已经由侧边栏给出。"+ 新建客户端" 并入 toolbar 末尾。 -->
+    <div class="admin-sticky-head">
+      <!-- 工具栏:搜索 + 状态(active/disabled)+ 计数 + 新建。
+           这里的状态本身就是 OAuth 客户端最常用的"找下被关掉的应用"维度,
+           加这个 filter 比强行给搜索加 status: 前缀更直接。 -->
+      <div class="admin-toolbar">
+        <input v-model="search" placeholder="搜索名称 / Client ID / 描述…" class="input admin-search" />
+        <select v-model="statusFilter" class="input admin-filter">
+          <option value="">全部状态</option>
+          <option value="active">启用</option>
+          <option value="disabled">停用</option>
+        </select>
+        <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 个</span>
+        <button @click="openCreate" class="btn btn-primary admin-action">+ 新建客户端</button>
+      </div>
     </div>
 
     <transition name="bulk">
@@ -361,13 +360,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.admin-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
 .admin-toolbar {
   display: flex;
   align-items: center;

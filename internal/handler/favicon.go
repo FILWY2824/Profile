@@ -544,3 +544,64 @@ func (h *FaviconHandler) deleteAdmin(c echo.Context) error {
 		"删除 favicon 缓存:"+origin, origin))
 	return c.JSON(http.StatusOK, map[string]any{"success": true})
 }
+
+// ─── Hooks for card-mutation paths ───────────────────────────────────────
+//
+// 当管理员在"卡片"页面里 创建 / 更新 / 删除 卡片时,我们需要让图标缓存
+// 跟着改 — 否则旧的 origin 的图标会一直留在表里(被认为孤儿),新加的 origin
+// 又要等到第一次有用户访问主页才被动抓取,管理员看不到反馈。
+//
+// 这里暴露两个公开方法供 admin_content.go 调用:
+//
+//   - EnsureFreshForOrigin: 删掉该 origin 现有的缓存并重新抓取一次,确保
+//     管理员保存卡片后看到的是最新图标(即使源站偶尔换 favicon)。
+//   - DropIfOrphan: 若该 origin 在删除/改 URL 之后已经没有任何卡片引用,
+//     就把缓存行删掉,避免堆积"曾经的卡片"的图标。
+//
+// 调用方应该用 goroutine 异步执行,因为 EnsureFreshForOrigin 走网络
+// (8s 超时),不能阻塞管理员的 HTTP 响应。
+
+// canonicalOriginFromURL 提取并 canonicalize 卡片 URL 的 origin。
+// admin_content.go 在调用 hook 之前已经走过 urlsafe.SanitizeHTTPURLOrEmpty,
+// 这里再做一遍 IsSafeHTTPURL 是出于安全分层(不假设上游一定 sanitize 过)。
+func canonicalOriginFromURL(rawURL string) string {
+	return canonicalOrigin(rawURL)
+}
+
+// EnsureFreshForOrigin 丢弃 origin 现有的缓存(若有),然后重新抓取一次。
+// 用于 卡片创建 / 卡片 URL 更新 后,确保新的卡片对应的图标是最新抓回的,
+// 而不是某次旧抓取的残留。
+//
+// 注意:必须用一个独立于 echo 请求的 ctx(请求 ctx 在 response 写完后会被
+// cancel,但本函数在 goroutine 里继续跑)。调用方负责传入合适的 parent ctx。
+func (h *FaviconHandler) EnsureFreshForOrigin(parent context.Context, rawURL string) {
+	origin := canonicalOriginFromURL(rawURL)
+	if origin == "" {
+		return
+	}
+	// 直接删旧 — Delete 在没行时返回 ErrNotFound,我们不在乎。
+	_ = h.Favicons.Delete(origin)
+	// fetchAndCache 内部已经有 inflight 去重 + 8s 超时,这里直接调用即可。
+	if err := h.fetchAndCache(parent, origin); err != nil {
+		// 失败也无所谓 — fetchAndCache 自己会写一行 lastError 到缓存表,
+		// 让管理员在"图标缓存"页面看到。
+		// eslint-disable-next-line no-console (Go: log)
+		// 不打日志,避免高频改动污染 stderr。
+		_ = err
+	}
+}
+
+// DropIfOrphan 在 origin 已经没有任何卡片引用时把它从缓存表里删掉。
+// 用于 卡片删除 / 卡片 URL 改到别的 origin 之后清理孤儿缓存。
+func (h *FaviconHandler) DropIfOrphan(rawURL string) {
+	origin := canonicalOriginFromURL(rawURL)
+	if origin == "" {
+		return
+	}
+	referenced, err := h.Cards.ReferencesOrigin(origin)
+	if err != nil || referenced {
+		// 查询失败时保守起见保留缓存(下次清理或手动删除即可)
+		return
+	}
+	_ = h.Favicons.Delete(origin)
+}
