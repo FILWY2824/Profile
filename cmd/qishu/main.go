@@ -214,6 +214,7 @@ func run() error {
 
 	(&handler.AdminDashboardHandler{
 		Users: users, Sections: sections, Cards: cards,
+		DataDir: cfg.DataDir,
 	}).Register(adminG.Group("/dashboard"))
 
 	(&handler.AdminRuntimeHandler{}).Register(adminG.Group("/runtime"))

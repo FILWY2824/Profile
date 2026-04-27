@@ -1,83 +1,60 @@
 <template>
-  <div class="space-y-6 pb-24">
+  <div class="space-y-5 pb-24">
+    <!-- 顶部:页标题 + 副标题(全宽,与其它 tab 一致),不再放在左侧栏里。 -->
+    <header>
+      <h1 class="h-page">系统设置<span class="text-teal-300">.</span></h1>
+      <p class="text-fg-dim text-[15px] mt-2">所有改动只对新会话生效;部分项保存后立即热重载</p>
+    </header>
+
     <div v-if="loading" class="surface p-12 text-center text-fg-dim text-sm">
       <span class="inline-block h-2 w-2 rounded-full bg-teal-500 animate-shine mr-2 align-middle"></span>
       加载中
     </div>
 
-    <div v-else class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-5">
-      <!-- 左:固定的子侧栏 - 标题/副标题在最上方,搜索框、分类、未保存堆叠、
-           数据保留(prune 工具)依次往下。整页不再有顶部的大 H1。 -->
-      <aside class="lg:sticky lg:top-0 lg:self-start space-y-3 settings-side">
-        <div class="settings-side-head">
-          <h2 class="settings-side-title">系统设置<span class="text-teal-300">.</span></h2>
-          <p class="settings-side-sub">所有改动只对新会话生效;部分项保存后立即热重载</p>
-        </div>
-
-        <input v-model="search" placeholder="搜索键名 / 描述…" class="input" />
-
-        <div class="surface p-2 space-y-0.5">
+    <template v-else>
+      <!-- 顶部 filter bar:搜索 + 分类胶囊 + 计数。
+           分类原本是侧栏纵向列表,现在改横向 — 这样移动端、宽屏都更省空间,
+           也跟其它 tab 的 admin-toolbar 视觉一致。胶囊按 active 高亮,带 count
+           小角标,悬停态从侧栏样式移植过来。 -->
+      <div class="settings-toolbar">
+        <input v-model="search" placeholder="搜索键名 / 描述…" class="input settings-search" />
+        <div class="cat-pill-row">
           <button @click="activeCategory = 'all'"
-                  :class="['tab-pill', activeCategory === 'all' && 'tab-pill-active']">
+                  :class="['cat-pill', activeCategory === 'all' && 'cat-pill-active']">
             <span>全部</span>
-            <span class="ml-auto text-xs opacity-70">{{ items.length }}</span>
+            <span class="cat-pill-count">{{ items.length }}</span>
           </button>
           <button v-for="c in categories" :key="c.key"
                   @click="activeCategory = c.key"
-                  :class="['tab-pill', activeCategory === c.key && 'tab-pill-active']">
-            <span>{{ c.icon }}</span>
+                  :class="['cat-pill', activeCategory === c.key && 'cat-pill-active']">
+            <span class="cat-pill-icon">{{ c.icon }}</span>
             <span>{{ c.label }}</span>
-            <span class="ml-auto text-xs opacity-70">{{ c.count }}</span>
+            <span class="cat-pill-count">{{ c.count }}</span>
           </button>
         </div>
+        <span class="settings-count">共 {{ filteredItems.length }} / {{ items.length }} 项</span>
+      </div>
 
-        <div v-if="modifiedKeys.length > 0" class="settings-modified-pile">
-          <div class="text-xs text-warn font-semibold">{{ modifiedKeys.length }} 项未保存</div>
-          <ul class="text-[11px] font-mono mt-1.5 space-y-0.5 max-h-32 overflow-y-auto" style="color: #B45309">
-            <li v-for="k in modifiedKeys.slice(0, 8)" :key="k">{{ k }}</li>
-            <li v-if="modifiedKeys.length > 8" class="opacity-70">…还有 {{ modifiedKeys.length - 8 }} 项</li>
-          </ul>
+      <!-- 已修改提示横条 — 原版藏在侧栏底,现在直接顶在设置列表上方,
+           因为底部已经有 floating-save-bar,这里再放具体 key 列表帮助管理员
+           对照"我到底改了哪几行"。 -->
+      <div v-if="modifiedKeys.length > 0" class="modified-banner">
+        <div class="modified-banner-head">
+          <span class="badge-amber">{{ modifiedKeys.length }} 项未保存</span>
+          <span class="text-[11px] text-fg-mute">改动列表 (鼠标悬停查看完整 key)</span>
         </div>
+        <ul class="modified-banner-keys">
+          <li v-for="k in modifiedKeys.slice(0, 12)" :key="k" :title="k">{{ k }}</li>
+          <li v-if="modifiedKeys.length > 12" class="modified-banner-more">…还有 {{ modifiedKeys.length - 12 }}</li>
+        </ul>
+      </div>
 
-        <!-- 数据保留 / 一键清理 — 用户要求:可以勾选具体内容批量清理。
-             单选清理可继续点每行的 "清理" 按钮,批量则用上方多选 + "清理选中" -->
-        <div class="surface p-3 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-fg uppercase tracking-wider">数据保留 · 一键清理</span>
-          </div>
-          <p class="text-[11px] text-fg-mute leading-relaxed">
-            勾选后点 "清理选中" 一次清掉全部勾选项;也可以单独点每行的清理按钮。
-          </p>
-          <ul class="space-y-1.5">
-            <li v-for="t in pruneTargets" :key="t.key" class="prune-row">
-              <label class="prune-label">
-                <input type="checkbox" v-model="pruneSelected[t.key]" :disabled="pruneBusy" />
-                <span class="prune-name">{{ t.label }}</span>
-              </label>
-              <button @click="pruneOne(t.key)" :disabled="pruneBusy"
-                      class="btn btn-ghost btn-sm">清理</button>
-            </li>
-          </ul>
-          <div class="flex items-center gap-2 pt-1">
-            <button @click="selectAllPrune(true)" class="text-[11px] text-fg-dim hover:text-fg">全选</button>
-            <span class="text-fg-mute text-[11px]">·</span>
-            <button @click="selectAllPrune(false)" class="text-[11px] text-fg-dim hover:text-fg">清空</button>
-            <button @click="pruneBatch" :disabled="pruneBusy || selectedCount === 0"
-                    class="btn btn-secondary btn-sm ml-auto">
-              {{ pruneBusy ? '清理中…' : `清理选中 (${selectedCount})` }}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Settings list -->
-      <div class="space-y-3">
-        <div v-if="filteredItems.length === 0" class="surface p-8 text-center text-fg-dim text-sm">
-          没有匹配的设置项
-        </div>
-
-        <div v-else
-             v-for="row in filteredItems" :key="row.key"
+      <!-- 设置列表 — 行布局保持原版的 1+2 列网格 -->
+      <div v-if="filteredItems.length === 0" class="surface p-8 text-center text-fg-dim text-sm">
+        没有匹配的设置项
+      </div>
+      <div v-else class="space-y-3">
+        <div v-for="row in filteredItems" :key="row.key"
              :class="['surface p-4 transition-colors', isModified(row.key) && 'setting-row-modified']">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 md:items-start">
             <div class="md:pr-2">
@@ -112,9 +89,51 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Floating save bar -->
+      <!-- 数据保留 / 一键清理 — 用户要求从侧栏移到主区。放在设置列表最下方,
+           因为它是破坏性操作,不应该抢在普通设置之前夺走视线。
+           用单独 surface 卡片 + 显眼的小标题与说明,内部仍是"复选 + 单清/批清"
+           的双模式。 -->
+      <section class="retention-section">
+        <div class="retention-head">
+          <div>
+            <h2 class="h-section">
+              数据保留 · 一键清理<span class="ic-accent">⌫</span>
+            </h2>
+            <p class="text-fg-dim text-sm mt-1.5">
+              勾选后点 "清理选中" 一次性清掉勾选项;也可以单独点每行的 "清理"。
+              <span class="text-warn-700">操作不可逆。</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="surface retention-card">
+          <ul class="retention-list">
+            <li v-for="t in pruneTargets" :key="t.key"
+                :class="['retention-row', pruneSelected[t.key] && 'retention-row-on']">
+              <label class="retention-label">
+                <input type="checkbox" v-model="pruneSelected[t.key]" :disabled="pruneBusy" class="bulk-cb" />
+                <span class="retention-name">{{ t.label }}</span>
+              </label>
+              <button @click="pruneOne(t.key)" :disabled="pruneBusy"
+                      class="btn btn-ghost btn-sm">清理</button>
+            </li>
+          </ul>
+
+          <div class="retention-footer">
+            <button @click="selectAllPrune(true)" class="text-[12px] text-fg-dim hover:text-fg">全选</button>
+            <span class="text-fg-mute text-[12px]">·</span>
+            <button @click="selectAllPrune(false)" class="text-[12px] text-fg-dim hover:text-fg">清空</button>
+            <button @click="pruneBatch" :disabled="pruneBusy || pruneSelectedCount === 0"
+                    class="btn btn-secondary btn-sm ml-auto bulk-danger">
+              {{ pruneBusy ? '清理中…' : `清理选中 (${pruneSelectedCount})` }}
+            </button>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <!-- Floating save bar — 位置 / 视觉与原版一致 -->
     <transition name="bar">
       <div v-if="modifiedKeys.length > 0" class="floating-save-bar">
         <div class="text-sm">
@@ -159,9 +178,7 @@ const hotReloadKeys = new Set([
 ]);
 function isHotReload(k) { return hotReloadKeys.has(k); }
 
-// ─── 数据保留 / 清理目标 ──────────────────────────────────────────────
-// 之前只有 2 项,实际可清理的内容远不止两项。把 vcodes/pending 这种短期表
-// 也暴露出来,加上 favicons / oauth-codes / oauth-tokens-expired,共 7 个目标。
+// ─── 数据保留 / 清理目标(原本在侧栏,现在移到主区底部)───────────────
 const pruneTargets = [
   { key: "vcodes",               label: "过期验证码 (vcodes)" },
   { key: "pending",              label: "过期待注册 (pending)" },
@@ -173,7 +190,7 @@ const pruneTargets = [
 ];
 const pruneSelected = ref({});
 const pruneBusy = ref(false);
-const selectedCount = computed(() => pruneTargets.filter(t => pruneSelected.value[t.key]).length);
+const pruneSelectedCount = computed(() => pruneTargets.filter(t => pruneSelected.value[t.key]).length);
 function selectAllPrune(v) {
   for (const t of pruneTargets) pruneSelected.value[t.key] = v;
 }
@@ -299,65 +316,207 @@ onMounted(load);
 </script>
 
 <style scoped>
-.settings-side {
-  /* 给侧栏一个稳定背景层级 */
+/* 顶部工具条 — 与其它 tab 风格一致(input + 横向胶囊 + count) */
+.settings-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.settings-side-head {
-  padding: 4px 8px 8px;
+.settings-search {
+  flex: 0 0 260px;
+  max-width: 100%;
 }
-.settings-side-title {
-  font-family: "Bricolage Grotesque", "Plus Jakarta Sans", system-ui, sans-serif;
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.022em;
-  color: var(--fg);
-  line-height: 1.1;
-  font-variation-settings: "opsz" 36;
-}
-.settings-side-sub {
-  font-size: 11.5px;
-  color: var(--fg-dim);
-  margin-top: 6px;
-  line-height: 1.45;
+.settings-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+  align-self: center;
+  margin-left: auto;
 }
 
-.settings-modified-pile {
+/* 分类胶囊行 — 横向滚动以适配窄屏。 */
+.cat-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  transition: all 0.14s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cat-pill:hover {
+  color: var(--fg);
+  background-color: rgba(255, 255, 255, 0.85);
+}
+.cat-pill-active {
+  background: linear-gradient(135deg, #34D399, #10B981 60%, #047857) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 4px 10px -3px rgba(16, 185, 129, 0.45);
+}
+.cat-pill-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+.cat-pill-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+.cat-pill-active .cat-pill-count {
+  opacity: 0.85;
+}
+
+/* 已修改提示横条 — 比侧栏内的"未保存堆叠"信息密度高一点 */
+.modified-banner {
   background-color: rgba(254, 243, 199, 0.55);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(217, 119, 6, 0.35);
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 14px;
+  padding: 12px 14px;
 }
+.modified-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.modified-banner-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: #92400E;
+}
+.modified-banner-keys li {
+  background-color: rgba(254, 243, 199, 0.85);
+  border: 1px solid rgba(217, 119, 6, 0.32);
+  border-radius: 6px;
+  padding: 2px 7px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modified-banner-more {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  font-style: italic;
+  opacity: 0.7;
+}
+
 .setting-row-modified {
   border-color: rgba(217, 119, 6, 0.40) !important;
   background-color: rgba(254, 243, 199, 0.45) !important;
 }
 
-/* prune 行 */
-.prune-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* 数据保留 / 一键清理 卡片 — 在主区底部独立成节 */
+.retention-section {
+  margin-top: 8px;
+  padding-top: 24px;
+  border-top: 1px dashed rgba(15, 36, 25, 0.10);
 }
-.prune-label {
+.retention-head {
+  margin-bottom: 12px;
+}
+.ic-accent {
+  font-style: italic;
+  font-weight: 500;
+  margin-left: 6px;
+  color: var(--brand);
+}
+.text-warn-700 { color: #B45309; font-weight: 500; }
+
+.retention-card {
+  padding: 6px 6px 10px;
+}
+.retention-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+@media (min-width: 768px) {
+  .retention-list { grid-template-columns: 1fr 1fr; }
+}
+
+.retention-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background-color 0.14s;
+}
+.retention-row:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.retention-row-on {
+  background-color: rgba(167, 243, 208, 0.30);
+}
+.retention-row-on:hover {
+  background-color: rgba(167, 243, 208, 0.42);
+}
+.retention-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex: 1;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--fg-dim);
+  font-size: 13px;
+  color: var(--fg);
+  min-width: 0;
 }
-.prune-label input[type="checkbox"] {
-  accent-color: var(--brand);
-  flex-shrink: 0;
-}
-.prune-name {
+.retention-name {
   flex: 1;
   min-width: 0;
+}
+
+.retention-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 4px;
+  border-top: 1px solid rgba(15, 36, 25, 0.06);
+  margin-top: 4px;
+}
+.bulk-cb {
+  accent-color: var(--brand);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.bulk-danger {
+  color: var(--danger) !important;
+  border-color: rgba(220, 38, 38, 0.30) !important;
+}
+.bulk-danger:hover:not(:disabled) {
+  background-color: rgba(220, 38, 38, 0.08) !important;
 }
 
 .floating-save-bar {

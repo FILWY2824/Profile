@@ -29,11 +29,69 @@
         </div>
       </section>
 
+      <!-- 磁盘占用 — DataDir 整体 + sqlite 三件套细分。
+           没有"磁盘 limit"这种概念(不像内存有 cgroup 上限),所以不做百分比
+           条;只展示绝对值和构成。 -->
+      <section v-if="disk">
+        <h2 class="h-section mb-4">磁盘占用<span class="ic-accent">⌨</span></h2>
+        <div class="surface p-6">
+          <div v-if="disk.totalBytes < 0" class="text-fg-dim text-sm">
+            读不到数据目录:<span class="font-mono text-xs">{{ disk.path || '(未知)' }}</span>
+          </div>
+          <template v-else>
+            <div class="flex items-baseline justify-between flex-wrap gap-2 mb-4">
+              <div class="flex items-baseline gap-3">
+                <span class="font-display font-bold tabular-nums tracking-tight stat-num-lg text-fg">
+                  {{ formatBytes(disk.totalBytes) }}
+                </span>
+                <span class="text-sm text-fg-dim">{{ disk.fileCount }} 个文件</span>
+              </div>
+              <code class="font-mono text-[11px] text-fg-mute truncate max-w-full">{{ disk.path }}</code>
+            </div>
+
+            <!-- 三段构成条:db / wal / 其它(shm 通常很小,合并到 wal 里展示) -->
+            <div class="disk-track" :title="disk.totalBytes + ' bytes'">
+              <span class="disk-seg disk-seg-db"   :style="{ width: pct(disk.dbBytes, disk.totalBytes) + '%' }"></span>
+              <span class="disk-seg disk-seg-wal"  :style="{ width: pct(disk.walBytes + disk.shmBytes, disk.totalBytes) + '%' }"></span>
+              <span class="disk-seg disk-seg-other" :style="{ width: pct(disk.otherBytes, disk.totalBytes) + '%' }"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mt-4">
+              <div class="disk-stat">
+                <div class="disk-stat-dot disk-seg-db"></div>
+                <div>
+                  <div class="disk-stat-label">主库 (.db)</div>
+                  <div class="disk-stat-value">{{ formatBytes(disk.dbBytes) }}</div>
+                </div>
+              </div>
+              <div class="disk-stat">
+                <div class="disk-stat-dot disk-seg-wal"></div>
+                <div>
+                  <div class="disk-stat-label">WAL / SHM</div>
+                  <div class="disk-stat-value">{{ formatBytes(disk.walBytes + disk.shmBytes) }}</div>
+                </div>
+              </div>
+              <div class="disk-stat">
+                <div class="disk-stat-dot disk-seg-other"></div>
+                <div>
+                  <div class="disk-stat-label">其它</div>
+                  <div class="disk-stat-value">{{ formatBytes(disk.otherBytes) }}</div>
+                </div>
+              </div>
+            </div>
+            <p class="text-xs text-fg-dim mt-3 leading-relaxed">
+              <span class="text-teal-300">·</span>
+              SQLite WAL 在大量写入后会膨胀,checkpoint 之后会压缩到很小;
+              如果"其它"持续增长,通常是图标缓存,可以在系统设置里一键清理。
+            </p>
+          </template>
+        </div>
+      </section>
+
       <!-- 运行时内存 -->
       <section>
         <div class="flex items-center justify-between mb-4">
           <h2 class="h-section">运行时<span class="ic-accent">⌬</span></h2>
-          <button @click="loadRuntime(true)" class="btn btn-ghost btn-sm">
+          <button @click="refreshAll" class="btn btn-ghost btn-sm">
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -142,15 +200,21 @@ const runtimeErr = ref("");
 let pollTimer = null;
 
 onMounted(async () => {
-  try { data.value = await api.get("/admin/dashboard"); }
-  finally { loading.value = false; }
+  await loadDashboard();
   loadRuntime();
+  // 30s 轮询只刷新 runtime;dashboard(含 disk walk)避免高频 stat 整个目录,
+  // 让管理员手动按"刷新"。
   pollTimer = setInterval(loadRuntime, 30000);
 });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
 });
+
+async function loadDashboard() {
+  try { data.value = await api.get("/admin/dashboard"); }
+  finally { loading.value = false; }
+}
 
 async function loadRuntime() {
   try {
@@ -160,6 +224,13 @@ async function loadRuntime() {
     runtimeErr.value = e.message;
   }
 }
+
+// "刷新"按钮同时刷新两个数据源 — 否则用户看完磁盘清理的效果还得切一次 tab。
+async function refreshAll() {
+  await Promise.all([loadDashboard(), loadRuntime()]);
+}
+
+const disk = computed(() => data.value?.disk || null);
 
 const stats = computed(() => {
   const d = data.value || {};
@@ -206,6 +277,23 @@ function formatKiB(kib) {
   if (kib >= 1024) return (kib / 1024).toFixed(1) + " MiB";
   return kib + " KiB";
 }
+// formatBytes 用于磁盘占用 — 跨多个数量级所以做完整阶梯,而不是固定 MiB。
+function formatBytes(b) {
+  if (b === undefined || b === null || b < 0) return "—";
+  if (b === 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let i = 0;
+  let v = b;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  // < 10 时多保留一位小数;>= 10 直接整数,看着更利落
+  const s = v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : Math.round(v).toString();
+  return s + " " + units[i];
+}
+function pct(part, total) {
+  if (!total || total <= 0) return 0;
+  return Math.max(0, Math.min(100, (part / total) * 100));
+}
+
 const usageNum = computed(() => {
   if (!rt.value || rt.value.cgroupMemoryCurrentBytes < 0 || rt.value.cgroupMemoryMaxBytes <= 0) return 0;
   return (rt.value.cgroupMemoryCurrentBytes / rt.value.cgroupMemoryMaxBytes) * 100;
@@ -249,5 +337,50 @@ const memOver = computed(() => usageNum.value > 90);
 }
 .progress-bar-danger {
   background: linear-gradient(90deg, #F87171, #DC2626);
+}
+
+/* 磁盘构成条 — 用 inline-block 段拼接,而不是堆叠条;这样三个段并排,
+   与下面三个图例位置上一一对应,扫一眼就能对得上。 */
+.disk-track {
+  height: 10px;
+  border-radius: 999px;
+  background-color: rgba(15, 36, 25, 0.06);
+  overflow: hidden;
+  display: flex;
+}
+.disk-seg {
+  height: 100%;
+  display: inline-block;
+  transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.disk-seg-db    { background: linear-gradient(90deg, #34D399, #10B981); }
+.disk-seg-wal   { background: linear-gradient(90deg, #FBBF24, #F59E0B); }
+.disk-seg-other { background: linear-gradient(90deg, #94A3B8, #64748B); }
+
+.disk-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.disk-stat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.disk-stat-label {
+  font-size: 11px;
+  color: var(--fg-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.disk-stat-value {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-top: 2px;
 }
 </style>

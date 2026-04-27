@@ -1,8 +1,15 @@
 <template>
-  <!-- 与顶栏共用相同的 max-w-7xl + lg:px-8 居中容器,所以侧边栏左缘和主内容
-       右缘都和顶栏的内容边界对齐(顶栏 NavBar.vue 用的是 `mx-auto max-w-7xl`
-       + `px-4 sm:px-6 lg:px-8`)。.admin-shell 内部再分两栏。 -->
+  <!-- 关键:布局结构必须与 NavBar.vue 严格一致才能让两者左右边界对齐。
+       NavBar 用的是 `outer:px-4 sm:px-6 lg:px-8` 包 `inner:mx-auto max-w-7xl`,
+       padding 在 max-width 之外。如果反过来(把 padding 放在 max-width 容器内),
+       当视口 > 1280px 时 max-w-7xl 就会被钉在 1280px 居中,内部 padding 又把
+       内容再向中央挤 32px,结果 admin-shell 比 nav-glass 内缩 32px — 这是
+       原版的对齐 bug。
+       正确做法:`admin-outer` 满视口 + 与顶栏同款 padding,`admin-inner` 内部
+       `mx-auto max-w-7xl` 无 padding。这样 `.admin-shell` 的左右边界与顶栏
+       `.nav-glass` 完全一致。 -->
   <div class="admin-outer">
+   <div class="admin-inner">
     <div class="admin-shell">
       <aside class="admin-sidebar hidden md:flex flex-col">
         <div class="admin-brand">
@@ -66,6 +73,7 @@
         </div>
       </main>
     </div>
+   </div>
   </div>
 </template>
 
@@ -114,15 +122,14 @@ const today = computed(() => formatDate());
 </script>
 
 <style scoped>
-/* 外层 — 与顶栏的 mx-auto max-w-7xl px-* 完全对齐。
-   App.vue 在 has-sidebar 模式下让 main 占满高度 / 自身 overflow:hidden,
-   所以这里 admin-outer 也要 height:100% 并 overflow:hidden,内层
-   admin-shell 再分两栏。 */
+/* 外层容器 — 必须与 NavBar 的最外层 `<nav class="px-4 sm:px-6 lg:px-8">`
+   规格完全一致:满视口宽 + 与顶栏同 padding,padding 必须在 max-width 之外。
+   App.vue 在 has-sidebar 模式下让 main 占满高度并 overflow:hidden,所以
+   admin-outer 也要 height:100% 并 overflow:hidden;真正的滚动让 admin-main
+   自己处理。 */
 .admin-outer {
   height: 100%;
   width: 100%;
-  margin: 0 auto;
-  max-width: 80rem;       /* tailwind max-w-7xl */
   padding: 0 1rem;        /* tailwind px-4 */
   overflow: hidden;
 }
@@ -131,6 +138,15 @@ const today = computed(() => formatDate());
 }
 @media (min-width: 1024px) {
   .admin-outer { padding-left: 2rem; padding-right: 2rem; }     /* lg:px-8 */
+}
+
+/* 内层容器 — 与 NavBar 的 `<div class="mx-auto max-w-7xl">` 一一对应,
+   不能再加任何 padding。这里是真正决定 admin-shell 左右边界的层。 */
+.admin-inner {
+  height: 100%;
+  width: 100%;
+  margin: 0 auto;
+  max-width: 80rem;       /* tailwind max-w-7xl */
 }
 
 .admin-shell {
@@ -286,6 +302,7 @@ const today = computed(() => formatDate());
 /* 窄屏时 admin-shell 改成纵向 */
 @media (max-width: 768px) {
   .admin-outer { overflow: visible; height: auto; }
+  .admin-inner { height: auto; }
   .admin-shell { flex-direction: column; height: auto; }
   .admin-main { height: auto; }
   .admin-sidebar { display: none; }

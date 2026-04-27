@@ -11,15 +11,32 @@
       </div>
     </header>
 
+    <!-- 工具栏因 tab 不同而不同。
+         登录历史:成功 / 失败 是最高频的查询维度,做成 filter。
+         活动日志:按 action 前缀(admin / auth / account)归档,管理员通常想看
+         "今天的管理操作"或"今天的登录尝试",前缀 filter 比 grep 直观。
+         审计本身只读,不加 checkbox / 批量按钮。 -->
     <div class="admin-toolbar">
-      <input v-if="active === 'login'" v-model="loginSearch"
-             placeholder="搜索邮箱 / IP / 原因…" class="input admin-search" />
-      <input v-else v-model="activitySearch"
-             placeholder="搜索用户 / action / 详情…" class="input admin-search" />
-      <span class="admin-count">
-        <template v-if="active === 'login'">共 {{ filteredLoginRows.length }} / {{ loginTotal }} 条 (当前页)</template>
-        <template v-else>共 {{ filteredActivityRows.length }} / {{ activityTotal }} 条 (当前页)</template>
-      </span>
+      <template v-if="active === 'login'">
+        <input v-model="loginSearch" placeholder="搜索邮箱 / IP / 原因…" class="input admin-search" />
+        <select v-model="loginResultFilter" class="input admin-filter">
+          <option value="">全部结果</option>
+          <option value="success">成功</option>
+          <option value="fail">失败</option>
+        </select>
+        <span class="admin-count">共 {{ filteredLoginRows.length }} / {{ loginTotal }} 条 (当前页)</span>
+      </template>
+      <template v-else>
+        <input v-model="activitySearch" placeholder="搜索用户 / action / 详情…" class="input admin-search" />
+        <select v-model="activityActionFilter" class="input admin-filter">
+          <option value="">全部操作</option>
+          <option value="admin.">管理操作 (admin.*)</option>
+          <option value="auth.">鉴权 (auth.*)</option>
+          <option value="account.">账户 (account.*)</option>
+          <option value="oauth.">OAuth (oauth.*)</option>
+        </select>
+        <span class="admin-count">共 {{ filteredActivityRows.length }} / {{ activityTotal }} 条 (当前页)</span>
+      </template>
     </div>
 
     <!-- 登录历史 -->
@@ -110,29 +127,42 @@ const loginRows = ref([]);
 const loginTotal = ref(0);
 const loginPage = ref(1);
 const loginSearch = ref("");
+const loginResultFilter = ref("");      // ""=全部, "success", "fail"
 
 const activityRows = ref([]);
 const activityTotal = ref(0);
 const activityPage = ref(1);
 const activitySearch = ref("");
+const activityActionFilter = ref("");   // 空=全部,否则匹配 action 前缀
 
 const filteredLoginRows = computed(() => {
   const q = loginSearch.value.trim().toLowerCase();
-  if (!q) return loginRows.value;
-  return loginRows.value.filter(r =>
-    (r.email || "").toLowerCase().includes(q) ||
-    (r.ip || "").toLowerCase().includes(q) ||
-    (r.reason || "").toLowerCase().includes(q));
+  const rf = loginResultFilter.value;
+  return loginRows.value.filter(r => {
+    if (rf === "success" && !r.success) return false;
+    if (rf === "fail" && r.success) return false;
+    if (!q) return true;
+    return (
+      (r.email || "").toLowerCase().includes(q) ||
+      (r.ip || "").toLowerCase().includes(q) ||
+      (r.reason || "").toLowerCase().includes(q)
+    );
+  });
 });
 
 const filteredActivityRows = computed(() => {
   const q = activitySearch.value.trim().toLowerCase();
-  if (!q) return activityRows.value;
-  return activityRows.value.filter(r =>
-    (r.username || "").toLowerCase().includes(q) ||
-    (r.email || "").toLowerCase().includes(q) ||
-    (r.action || "").toLowerCase().includes(q) ||
-    (r.detail || "").toLowerCase().includes(q));
+  const af = activityActionFilter.value;
+  return activityRows.value.filter(r => {
+    if (af && !(r.action || "").startsWith(af)) return false;
+    if (!q) return true;
+    return (
+      (r.username || "").toLowerCase().includes(q) ||
+      (r.email || "").toLowerCase().includes(q) ||
+      (r.action || "").toLowerCase().includes(q) ||
+      (r.detail || "").toLowerCase().includes(q)
+    );
+  });
 });
 
 async function loadLogin() {
@@ -181,8 +211,13 @@ onMounted(loadLogin);
 }
 .admin-search {
   flex: 1;
-  min-width: 240px;
-  max-width: 420px;
+  min-width: 200px;
+  max-width: 360px;
+}
+.admin-filter {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 140px;
 }
 .admin-count {
   font-family: "JetBrains Mono", ui-monospace, monospace;

@@ -1,6 +1,9 @@
 <template>
-  <!-- 与顶栏同宽的居中容器,保证侧栏左缘与主区右缘都跟顶栏对齐。 -->
+  <!-- 与 NavBar 严格对齐:外层只负责 padding(满视口),内层负责 max-w-7xl 居中。
+       padding 必须放在 max-width 之外,否则视口 > 1280px 时账号侧栏会比顶栏内
+       缩 32px。 -->
   <div class="account-outer">
+   <div class="account-inner">
     <div class="account-shell">
       <aside class="acc-sidebar">
         <!-- 移动端横向 tabs -->
@@ -171,6 +174,7 @@
         </section>
       </main>
     </div>
+   </div>
   </div>
 </template>
 
@@ -315,12 +319,11 @@ onMounted(loadProfile);
 </script>
 
 <style scoped>
-/* 外层 — 与顶栏 mx-auto max-w-7xl 对齐 */
+/* 外层 — 满视口宽 + 与顶栏同 padding(padding 在 max-width 之外)。
+   见 AdminPage.vue 同款注释,理由相同。 */
 .account-outer {
   height: 100%;
   width: 100%;
-  margin: 0 auto;
-  max-width: 80rem;
   padding: 0 1rem;
 }
 @media (min-width: 640px) {
@@ -331,6 +334,17 @@ onMounted(loadProfile);
 }
 @media (max-width: 1023px) {
   .account-outer { height: auto; overflow: visible; }
+}
+
+/* 内层 — `mx-auto max-w-7xl` 与顶栏严格一致,无 padding。 */
+.account-inner {
+  height: 100%;
+  width: 100%;
+  margin: 0 auto;
+  max-width: 80rem;
+}
+@media (max-width: 1023px) {
+  .account-inner { height: auto; }
 }
 
 .account-shell {

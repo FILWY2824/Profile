@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -121,6 +124,10 @@ type AdminDashboardHandler struct {
 	Users    *repository.UserRepo
 	Sections *repository.SectionRepo
 	Cards    *repository.CardRepo
+
+	// DataDir 是 sqlite 数据库 + 任何持久化文件落地的目录。dashboard 用它
+	// 计算"占用磁盘"。空值时返回 -1,前端按"未知"显示。
+	DataDir string
 }
 
 func (h *AdminDashboardHandler) Register(g *echo.Group) {
@@ -136,6 +143,8 @@ func (h *AdminDashboardHandler) summary(c echo.Context) error {
 	sectionCount, _ := h.Sections.Count()
 	cardCount, _ := h.Cards.Count()
 
+	disk := dirDiskUsage(h.DataDir)
+
 	return c.JSON(http.StatusOK, map[string]any{
 		"users": map[string]any{
 			"total":  totalUsers,
@@ -143,7 +152,87 @@ func (h *AdminDashboardHandler) summary(c echo.Context) error {
 		},
 		"sections": sectionCount,
 		"cards":    cardCount,
+		"disk":     disk,
 	})
+}
+
+// dirDiskUsage 把 DataDir 整个走一遍,返回总字节、文件数、子项分布
+// (db / wal / shm / 其它),供前端展示。读不到目录返回 totalBytes=-1。
+//
+// 设计取舍:
+//   - 不缓存。dashboard 是低频请求(管理员手动刷),走一遍 stat 比维护
+//     缓存 + 失效逻辑简单。即使数据目录上百 MiB,filepath.Walk 也是 ms 级。
+//   - 跳过隐藏文件以及目录自身的 size(目录的 Size() 是平台相关的元数据
+//     大小,不是内容大小,加进去会让前端总数对不上 du 输出)。
+//   - 单独切出 SQLite 三件套 (.db / .db-wal / .db-shm),让管理员一眼
+//     看出"主库占多少、WAL 占多少"。
+func dirDiskUsage(dataDir string) map[string]any {
+	out := map[string]any{
+		"path":       dataDir,
+		"totalBytes": int64(-1),
+		"fileCount":  0,
+		"dbBytes":    int64(0),
+		"walBytes":   int64(0),
+		"shmBytes":   int64(0),
+		"otherBytes": int64(0),
+	}
+	if dataDir == "" {
+		return out
+	}
+	abs, err := filepath.Abs(dataDir)
+	if err == nil {
+		out["path"] = abs
+	}
+	if _, err := os.Stat(dataDir); err != nil {
+		// 目录不存在或不可读 — 返回 -1 让前端区分"读取失败"与"0 字节"
+		return out
+	}
+
+	var total int64
+	var fileCount int
+	var db, wal, shm, other int64
+	walkErr := filepath.WalkDir(dataDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// 单个 entry 读失败时跳过,继续走完整个目录。这样权限被改过
+			// 的某一个文件不会让整个统计返回 -1。
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		size := info.Size()
+		total += size
+		fileCount++
+
+		name := strings.ToLower(d.Name())
+		switch {
+		case strings.HasSuffix(name, ".db-wal"):
+			wal += size
+		case strings.HasSuffix(name, ".db-shm"):
+			shm += size
+		case strings.HasSuffix(name, ".db"):
+			db += size
+		default:
+			other += size
+		}
+		return nil
+	})
+	if walkErr != nil {
+		// 顶层 walk 失败(目录被删等)— 仍然返回 -1
+		return out
+	}
+
+	out["totalBytes"] = total
+	out["fileCount"] = fileCount
+	out["dbBytes"] = db
+	out["walBytes"] = wal
+	out["shmBytes"] = shm
+	out["otherBytes"] = other
+	return out
 }
 
 // ─── Global audit ────────────────────────────────────────────────────────

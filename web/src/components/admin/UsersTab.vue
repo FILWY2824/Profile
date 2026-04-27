@@ -5,16 +5,48 @@
       <button @click="openCreate" class="btn btn-primary">+ 新建用户</button>
     </header>
 
+    <!-- 工具栏:搜索 + 角色 + 状态 + 计数。
+         用户列表是服务端分页的,所以 role / status 这两个 filter 走服务端
+         (后端 /admin/users 已经接受 ?role= 和 ?status= 参数,正好对接);
+         搜索仍在当前页内做,与原版一致 — 想全库搜索得后端加 q,本次不动。 -->
     <div class="admin-toolbar">
-      <input v-model="search" placeholder="搜索邮箱 / 姓名…" class="input admin-search" />
+      <input v-model="search" placeholder="搜索邮箱 / 姓名…(当前页)" class="input admin-search" />
+      <select v-model="roleFilter" class="input admin-filter" @change="resetAndLoad">
+        <option value="">全部角色</option>
+        <option value="admin">管理员</option>
+        <option value="member">成员</option>
+        <option value="user">普通用户</option>
+      </select>
+      <select v-model="statusFilter" class="input admin-filter" @change="resetAndLoad">
+        <option value="">全部状态</option>
+        <option value="active">活跃</option>
+        <option value="banned">封禁</option>
+        <option value="disabled">禁用</option>
+      </select>
       <span class="admin-count">共 {{ filteredUsers.length }} / {{ total }} 个 (当前页)</span>
     </div>
+
+    <transition name="bulk">
+      <div v-if="selectedCount > 0" class="bulk-bar">
+        <span class="bulk-count">已选中 <strong>{{ selectedCount }}</strong> 个</span>
+        <button @click="clearSelection" class="btn btn-ghost btn-sm">取消</button>
+        <button @click="onBulkDelete" :disabled="bulkBusy"
+                class="btn btn-secondary btn-sm bulk-danger">
+          {{ bulkBusy ? '删除中…' : `批量删除 (${selectedCount})` }}
+        </button>
+      </div>
+    </transition>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="admin-thead">
+              <th class="px-4 py-3 w-10">
+                <input type="checkbox" class="bulk-cb"
+                       :checked="pageAllChecked" :indeterminate.prop="pageSomeChecked"
+                       @change="togglePage($event.target.checked)" />
+              </th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">邮箱</th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">姓名</th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">角色</th>
@@ -24,7 +56,15 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in filteredUsers" :key="u.id" class="admin-row">
+            <tr v-for="u in filteredUsers" :key="u.id"
+                :class="['admin-row', selected[u.id] && 'admin-row-selected', !canDelete(u) && 'admin-row-locked']">
+              <td class="px-4 py-3">
+                <input type="checkbox" class="bulk-cb"
+                       :checked="!!selected[u.id]"
+                       :disabled="!canDelete(u)"
+                       :title="!canDelete(u) ? '不能删除自己 / 最后一个管理员' : ''"
+                       @change="toggleOne(u.id, $event.target.checked)" />
+              </td>
               <td class="px-4 py-3 font-mono text-xs text-fg">{{ u.email }}</td>
               <td class="px-4 py-3 text-fg">{{ u.name }}</td>
               <td class="px-4 py-3"><span :class="roleBadge(u.role)">{{ roleLabel(u.role) }}</span></td>
@@ -36,7 +76,7 @@
               </td>
             </tr>
             <tr v-if="filteredUsers.length === 0">
-              <td colspan="6" class="px-4 py-12 text-center text-fg-dim text-sm">
+              <td colspan="7" class="px-4 py-12 text-center text-fg-dim text-sm">
                 {{ users.length === 0 ? '暂无用户' : '没有匹配当前搜索' }}
               </td>
             </tr>
@@ -95,6 +135,7 @@ import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
 import { useConfirm } from "../../confirm.js";
 import { formatTime } from "../../format.js";
+import { currentUser } from "../../session.js";
 import Modal from "../Modal.vue";
 import Pagination from "../Pagination.vue";
 import PasswordInput from "../PasswordInput.vue";
@@ -106,6 +147,10 @@ const editing = ref(null);
 const busy = ref(false);
 const page = ref(1);
 const search = ref("");
+const roleFilter = ref("");
+const statusFilter = ref("");
+const selected = ref({});
+const bulkBusy = ref(false);
 
 const roleLabel = (r) => ({admin:"管理员", member:"成员", user:"用户"}[r] || r);
 const statusLabel = (s) => ({active:"活跃", banned:"封禁", disabled:"禁用"}[s] || s);
@@ -121,8 +166,13 @@ function statusBadge(s) {
   return "badge-slate";
 }
 
-// 用户列表是服务端分页(每页 10),搜索只在当前页内做。如果未来要全库搜索,
-// 可以加 q 参数到 /admin/users。这里先满足管理员"找个名字"的轻量需求。
+// canDelete:本地预先排除"自己"。后端还有"最后一个管理员"的二次校验,
+// 我们只能告诉用户"自己"不能删 — 因为没有总管理员数。前端不需要也不应
+// 该再实现一遍服务端逻辑,失败时把后端的错误信息透出就够了。
+function canDelete(u) {
+  return !currentUser.value || currentUser.value.id !== u.id;
+}
+
 const filteredUsers = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (!q) return users.value;
@@ -131,12 +181,47 @@ const filteredUsers = computed(() => {
     (u.name || "").toLowerCase().includes(q));
 });
 
+function clearSelection() { selected.value = {}; }
+const selectedCount = computed(() => Object.values(selected.value).filter(Boolean).length);
+
+// 选中状态只看 *本页可选* 的用户 — 已禁用 checkbox 的不算
+const selectableOnPage = computed(() => filteredUsers.value.filter(canDelete));
+const pageAllChecked = computed(() =>
+  selectableOnPage.value.length > 0 && selectableOnPage.value.every(u => selected.value[u.id])
+);
+const pageSomeChecked = computed(() => {
+  const some = selectableOnPage.value.some(u => selected.value[u.id]);
+  return some && !pageAllChecked.value;
+});
+
+function toggleOne(id, on) {
+  if (on) selected.value[id] = true;
+  else delete selected.value[id];
+}
+function togglePage(on) {
+  for (const u of selectableOnPage.value) {
+    if (on) selected.value[u.id] = true;
+    else delete selected.value[u.id];
+  }
+}
+
 async function load() {
   try {
-    const r = await api.get(`/admin/users?limit=10&offset=${(page.value - 1) * 10}`);
+    const params = new URLSearchParams();
+    params.set("limit", "10");
+    params.set("offset", String((page.value - 1) * 10));
+    if (roleFilter.value) params.set("role", roleFilter.value);
+    if (statusFilter.value) params.set("status", statusFilter.value);
+    const r = await api.get(`/admin/users?${params.toString()}`);
     users.value = r.items || [];
     total.value = r.total || 0;
   } catch (e) { errToast(e.message); }
+}
+
+// filter 变化时回到第 1 页 — 否则可能停在不存在的页码上
+function resetAndLoad() {
+  page.value = 1;
+  load();
 }
 
 function openCreate() {
@@ -181,8 +266,51 @@ async function onDelete(u) {
   try {
     await api.delete("/admin/users/" + u.id);
     okToast("用户已删除");
+    delete selected.value[u.id];
     await load();
   } catch (e) { errToast(e.message); }
+}
+
+// 批量删除:逐条调用,后端的"不能删自己 / 不能删最后管理员"校验全部保留。
+// 失败时把错误信息聚合上报,不打断其它项的删除。
+async function onBulkDelete() {
+  if (bulkBusy.value) return;
+  const ids = Object.keys(selected.value).filter(id => selected.value[id]);
+  if (ids.length === 0) return;
+  const idSet = new Set(ids);
+  const targets = users.value.filter(u => idSet.has(u.id));
+  const sample = targets.slice(0, 5).map(u => "· " + (u.name || u.email)).join("\n");
+  const more = targets.length > 5 ? `\n…还有 ${targets.length - 5} 个` : "";
+  const ok = await useConfirm({
+    title: "批量删除用户",
+    message: `确认删除选中的 ${ids.length} 个用户?`,
+    detail: "将连同其所有 OAuth token、授权与活动日志一并清除,不可恢复。\n\n" + sample + more,
+    kind: "danger",
+    confirmText: `永久删除 ${ids.length} 个`,
+  });
+  if (!ok) return;
+
+  bulkBusy.value = true;
+  let okCount = 0;
+  const failures = [];   // 收集所有失败原因,展示给管理员
+  for (const id of ids) {
+    try {
+      await api.delete("/admin/users/" + id);
+      delete selected.value[id];
+      okCount++;
+    } catch (e) {
+      const u = users.value.find(x => x.id === id);
+      failures.push((u?.email || id) + ": " + (e.message || "失败"));
+    }
+  }
+  bulkBusy.value = false;
+  if (failures.length === 0) {
+    okToast(`已删除 ${okCount} 个`);
+  } else {
+    // 失败可能是"最后管理员"等正当拦截,详细信息比纯计数有用得多
+    errToast(`成功 ${okCount} / 失败 ${failures.length} — ${failures[0]}${failures.length > 1 ? ` (还有 ${failures.length - 1} 项)` : ''}`);
+  }
+  await load();
 }
 
 onMounted(load);
@@ -204,8 +332,13 @@ onMounted(load);
 }
 .admin-search {
   flex: 1;
-  min-width: 240px;
-  max-width: 420px;
+  min-width: 200px;
+  max-width: 320px;
+}
+.admin-filter {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 120px;
 }
 .admin-count {
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -224,4 +357,53 @@ onMounted(load);
 .admin-row:hover {
   background-color: rgba(255, 255, 255, 0.55);
 }
+.admin-row-selected {
+  background-color: rgba(167, 243, 208, 0.30);
+}
+.admin-row-selected:hover {
+  background-color: rgba(167, 243, 208, 0.42);
+}
+.admin-row-locked .bulk-cb {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(167, 243, 208, 0.42), rgba(110, 231, 183, 0.30));
+  border: 1px solid rgba(110, 231, 183, 0.55);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+.bulk-count {
+  font-size: 13px;
+  color: var(--brand-deep);
+}
+.bulk-count strong {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 700;
+  margin: 0 2px;
+}
+.bulk-danger {
+  margin-left: auto;
+  color: var(--danger) !important;
+  border-color: rgba(220, 38, 38, 0.30) !important;
+}
+.bulk-danger:hover:not(:disabled) {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+.bulk-cb {
+  accent-color: var(--brand);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.bulk-enter-active, .bulk-leave-active { transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.bulk-enter-from, .bulk-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>

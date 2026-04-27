@@ -7,16 +7,47 @@
       </p>
     </header>
 
+    <!-- 工具栏:搜索 + 抓取状态 + 计数。
+         三档状态:有图标(hasData) / 抓取失败(lastError 非空) / 空(无 data
+         也无错)。后两档是管理员最关心的"哪些站点抓不下来",所以做成 filter 而非
+         搜索字段。 -->
     <div class="admin-toolbar">
       <input v-model="search" placeholder="搜索 origin / 卡片 / 板块…" class="input admin-search" />
+      <select v-model="statusFilter" class="input admin-filter">
+        <option value="">全部状态</option>
+        <option value="ok">有图标</option>
+        <option value="error">抓取失败</option>
+        <option value="empty">无数据</option>
+      </select>
       <span class="admin-count">共 {{ filteredItems.length }} / {{ items.length }} 条</span>
     </div>
+
+    <!-- 批量操作:这一页两个动作都有意义 — 批量刷新(订正失败的 origin)+
+         批量删除(清掉无引用的 / 出错的 origin)。 -->
+    <transition name="bulk">
+      <div v-if="selectedCount > 0" class="bulk-bar">
+        <span class="bulk-count">已选中 <strong>{{ selectedCount }}</strong> 条</span>
+        <button @click="clearSelection" class="btn btn-ghost btn-sm">取消</button>
+        <button @click="onBulkRefresh" :disabled="bulkBusy" class="btn btn-secondary btn-sm">
+          {{ bulkBusy && bulkAction === 'refresh' ? '刷新中…' : `批量刷新 (${selectedCount})` }}
+        </button>
+        <button @click="onBulkDelete" :disabled="bulkBusy"
+                class="btn btn-secondary btn-sm bulk-danger">
+          {{ bulkBusy && bulkAction === 'delete' ? '删除中…' : `批量删除 (${selectedCount})` }}
+        </button>
+      </div>
+    </transition>
 
     <div class="surface overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="admin-thead">
+              <th class="px-4 py-3 w-10">
+                <input type="checkbox" class="bulk-cb"
+                       :checked="pageAllChecked" :indeterminate.prop="pageSomeChecked"
+                       @change="togglePage($event.target.checked)" />
+              </th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider w-12"></th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">Origin</th>
               <th class="px-4 py-3 text-left text-xs text-fg-mute font-semibold uppercase tracking-wider">关联卡片</th>
@@ -28,11 +59,17 @@
           </thead>
           <tbody>
             <tr v-if="filteredItems.length === 0">
-              <td colspan="7" class="px-4 py-12 text-center text-fg-dim text-sm">
+              <td colspan="8" class="px-4 py-12 text-center text-fg-dim text-sm">
                 {{ items.length === 0 ? '暂无' : '没有匹配的图标' }}
               </td>
             </tr>
-            <tr v-for="r in pagedItems" :key="r.origin" class="admin-row">
+            <tr v-for="r in pagedItems" :key="r.origin"
+                :class="['admin-row', selected[r.origin] && 'admin-row-selected']">
+              <td class="px-4 py-3">
+                <input type="checkbox" class="bulk-cb"
+                       :checked="!!selected[r.origin]"
+                       @change="toggleOne(r.origin, $event.target.checked)" />
+              </td>
               <td class="px-4 py-3">
                 <div class="favicon-wrap">
                   <img v-if="r.hasData" :src="`/api/favicons/image?origin=${encodeURIComponent(r.origin)}`" class="h-5 w-5" alt="" />
@@ -56,7 +93,10 @@
               <td class="px-4 py-3 text-xs text-fg-dim">{{ formatTime(r.fetchedAt) }}</td>
               <td class="px-4 py-3 text-xs text-danger truncate max-w-xs">{{ r.lastError }}</td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
-                <button @click="onRefresh(r.origin)" class="btn btn-ghost btn-sm">刷新</button>
+                <button @click="onRefresh(r.origin)"
+                        :disabled="(r.cards || []).length === 0"
+                        :title="(r.cards || []).length === 0 ? '无关联卡片,无法刷新' : ''"
+                        class="btn btn-ghost btn-sm">刷新</button>
                 <button @click="onDelete(r.origin)" class="btn btn-ghost btn-sm text-danger hover:!text-danger">删除</button>
               </td>
             </tr>
@@ -81,16 +121,28 @@ import Pagination from "../Pagination.vue";
 const items = ref([]);
 const page = ref(1);
 const search = ref("");
+const statusFilter = ref("");
+const selected = ref({});           // 这里 key 是 origin(字符串),不是 id
+const bulkBusy = ref(false);
+const bulkAction = ref("");         // "refresh" | "delete" — 控制按钮 loading 文字
 const PAGE_SIZE = 10;
+
+// faviconStatus 三档:有图标 / 抓取失败 / 既无数据也无错(冷启动 / 待抓)
+function faviconStatus(r) {
+  if (r.hasData) return "ok";
+  if (r.lastError) return "error";
+  return "empty";
+}
 
 const filteredItems = computed(() => {
   const q = search.value.trim().toLowerCase();
-  if (!q) return items.value;
+  const st = statusFilter.value;
   return items.value.filter(r => {
+    if (st && faviconStatus(r) !== st) return false;
+    if (!q) return true;
     if ((r.origin || "").toLowerCase().includes(q)) return true;
     if ((r.contentType || "").toLowerCase().includes(q)) return true;
     if ((r.lastError || "").toLowerCase().includes(q)) return true;
-    // 在关联卡片标题/板块名里也搜索
     for (const card of (r.cards || [])) {
       if ((card.title || "").toLowerCase().includes(q)) return true;
       if ((card.sectionName || "").toLowerCase().includes(q)) return true;
@@ -104,12 +156,36 @@ const pagedItems = computed(() => {
   return filteredItems.value.slice(start, start + PAGE_SIZE);
 });
 
-watch(search, () => { page.value = 1; });
+watch([search, statusFilter], () => { page.value = 1; });
+
+function clearSelection() { selected.value = {}; }
+const selectedCount = computed(() => Object.values(selected.value).filter(Boolean).length);
+const pageAllChecked = computed(() =>
+  pagedItems.value.length > 0 && pagedItems.value.every(r => selected.value[r.origin])
+);
+const pageSomeChecked = computed(() => {
+  const some = pagedItems.value.some(r => selected.value[r.origin]);
+  return some && !pageAllChecked.value;
+});
+function toggleOne(origin, on) {
+  if (on) selected.value[origin] = true;
+  else delete selected.value[origin];
+}
+function togglePage(on) {
+  for (const r of pagedItems.value) {
+    if (on) selected.value[r.origin] = true;
+    else delete selected.value[r.origin];
+  }
+}
 
 async function load() {
   try {
     const r = await api.get("/admin/favicons");
     items.value = r.items || [];
+    const origins = new Set(items.value.map(x => x.origin));
+    for (const k of Object.keys(selected.value)) {
+      if (!origins.has(k)) delete selected.value[k];
+    }
   } catch (e) { errToast(e.message); }
 }
 
@@ -132,9 +208,81 @@ async function onDelete(origin) {
   try {
     await api.delete("/admin/favicons/" + encodeURIComponent(origin));
     okToast("图标缓存已删除");
+    delete selected.value[origin];
     await load();
   } catch (e) { errToast(e.message); }
 }
+
+// 批量刷新 — 不弹确认框,因为刷新是非破坏操作。但要在 toast 上汇报失败数,
+// 因为 SSRF / 站点 502 都可能让单条失败。
+async function onBulkRefresh() {
+  if (bulkBusy.value) return;
+  const origins = Object.keys(selected.value).filter(o => selected.value[o]);
+  if (origins.length === 0) return;
+  // 排除"无关联卡片"的 origin — 后端会拒绝,提前过滤减少噪音
+  const refreshable = origins.filter(o => {
+    const r = items.value.find(x => x.origin === o);
+    return r && (r.cards || []).length > 0;
+  });
+  const skipped = origins.length - refreshable.length;
+  if (refreshable.length === 0) {
+    errToast(`选中的 ${origins.length} 条都没有关联卡片,无法刷新`);
+    return;
+  }
+
+  bulkBusy.value = true;
+  bulkAction.value = "refresh";
+  let okCount = 0, failCount = 0;
+  for (const origin of refreshable) {
+    try {
+      await api.post("/admin/favicons/refresh", { origin });
+      okCount++;
+    } catch {
+      failCount++;
+    }
+  }
+  bulkBusy.value = false;
+  bulkAction.value = "";
+  const skipText = skipped > 0 ? ` · 跳过 ${skipped} 条无引用` : "";
+  if (failCount === 0) okToast(`已刷新 ${okCount} 条${skipText}`);
+  else errToast(`成功 ${okCount} / 失败 ${failCount}${skipText}`);
+  await load();
+}
+
+async function onBulkDelete() {
+  if (bulkBusy.value) return;
+  const origins = Object.keys(selected.value).filter(o => selected.value[o]);
+  if (origins.length === 0) return;
+  const sample = origins.slice(0, 5).map(o => "· " + o).join("\n");
+  const more = origins.length > 5 ? `\n…还有 ${origins.length - 5} 条` : "";
+  const ok = await useConfirm({
+    title: "批量删除图标缓存",
+    message: `确认删除选中的 ${origins.length} 条缓存?`,
+    detail: "再访问相关卡片时会按需重新抓取。\n\n" + sample + more,
+    kind: "danger",
+    confirmText: `删除 ${origins.length} 条`,
+  });
+  if (!ok) return;
+
+  bulkBusy.value = true;
+  bulkAction.value = "delete";
+  let okCount = 0, failCount = 0;
+  for (const origin of origins) {
+    try {
+      await api.delete("/admin/favicons/" + encodeURIComponent(origin));
+      delete selected.value[origin];
+      okCount++;
+    } catch {
+      failCount++;
+    }
+  }
+  bulkBusy.value = false;
+  bulkAction.value = "";
+  if (failCount === 0) okToast(`已删除 ${okCount} 条`);
+  else errToast(`成功 ${okCount} / 失败 ${failCount}`);
+  await load();
+}
+
 onMounted(load);
 </script>
 
@@ -154,8 +302,13 @@ onMounted(load);
 }
 .admin-search {
   flex: 1;
-  min-width: 240px;
-  max-width: 420px;
+  min-width: 200px;
+  max-width: 360px;
+}
+.admin-filter {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 120px;
 }
 .admin-count {
   font-family: "JetBrains Mono", ui-monospace, monospace;
@@ -173,6 +326,12 @@ onMounted(load);
 }
 .admin-row:hover {
   background-color: rgba(255, 255, 255, 0.55);
+}
+.admin-row-selected {
+  background-color: rgba(167, 243, 208, 0.30);
+}
+.admin-row-selected:hover {
+  background-color: rgba(167, 243, 208, 0.42);
 }
 .favicon-wrap {
   height: 28px;
@@ -216,4 +375,42 @@ onMounted(load);
   font-style: italic;
   opacity: 0.7;
 }
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(167, 243, 208, 0.42), rgba(110, 231, 183, 0.30));
+  border: 1px solid rgba(110, 231, 183, 0.55);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+.bulk-count {
+  font-size: 13px;
+  color: var(--brand-deep);
+}
+.bulk-count strong {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 700;
+  margin: 0 2px;
+}
+.bulk-danger {
+  color: var(--danger) !important;
+  border-color: rgba(220, 38, 38, 0.30) !important;
+}
+.bulk-danger:hover:not(:disabled) {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+.bulk-cb {
+  accent-color: var(--brand);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.bulk-enter-active, .bulk-leave-active { transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.bulk-enter-from, .bulk-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>
