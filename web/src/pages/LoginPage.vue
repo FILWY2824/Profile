@@ -13,6 +13,24 @@
         <p class="text-fg-dim text-sm">登录到你的账户</p>
       </div>
 
+      <!-- OAuth 流程引导:当用户从第三方应用跳转过来但尚未登录时,
+           App.vue 会因 requiresAuth 把当前路由临时渲染成本登录页。
+           给用户一条清晰的提示,让他们知道登录后会回到授权确认页。 -->
+      <div v-if="route.path === '/oauth/authorize'"
+           class="mb-5 p-3.5 rounded-xl text-xs leading-relaxed flex items-start gap-2.5"
+           style="background-color: rgba(20, 184, 166, 0.08); border: 1px solid rgba(20, 184, 166, 0.25); color: var(--fg-dim);">
+        <svg class="h-4 w-4 mt-0.5 flex-shrink-0 text-teal-300"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"
+             aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+        </svg>
+        <div class="flex-1">
+          <div class="font-medium text-fg mb-0.5">第三方应用授权请求</div>
+          <span>请先登录你的栖枢账号 — 登录后将返回授权确认页,由你决定是否同意。</span>
+        </div>
+      </div>
+
       <form @submit.prevent="onSubmit" class="space-y-4">
         <div>
           <label class="label">邮箱地址</label>
@@ -61,7 +79,7 @@
 import { ref, computed } from "vue";
 import { api } from "../api.js";
 import { loadSession } from "../session.js";
-import { navigate } from "../router.js";
+import { route, navigate } from "../router.js";
 import { errToast, okToast } from "../toast.js";
 import PasswordInput from "../components/PasswordInput.vue";
 import { useTurnstile } from "../composables/useTurnstile.js";
@@ -90,7 +108,12 @@ async function onSubmit() {
     });
     okToast("登录成功");
     await loadSession();
-    navigate("/");
+    // 关键修复: 如果当前 URL 实际上是另一条 requiresAuth 路由(例如第三方应用
+    // 引导用户来到 /oauth/authorize),App.vue 仅是因没登录才暂时渲染成本页面。
+    // 登录成功后保留原路由,让 App.vue 重新渲染目标页面 — 否则强制 navigate("/")
+    // 会把 hash 改成 #/,丢失 OAuth 上下文(client_id / redirect_uri / state 等),
+    // 三方应用看到的就是「用户登录后没回来」的失败现象。
+    if (route.path === "/login") navigate("/");
   } catch (e) {
     errToast(e.message);
     // 单 token 用完即弃。无论失败原因都把 widget reset 一次,让下次提交是干净的,
