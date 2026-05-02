@@ -74,9 +74,12 @@
               </select>
               <textarea v-else-if="row.value && row.value.length > 80"
                         v-model="dirty[row.key]" rows="3" class="input input-mono"></textarea>
+              <SensitiveSettingInput v-else-if="row.sensitive"
+                                     v-model="dirty[row.key]"
+                                     :is-modified="isModified(row.key)" />
               <input v-else
                      v-model="dirty[row.key]"
-                     :type="row.sensitive ? 'password' : 'text'"
+                     type="text"
                      class="input input-mono" />
 
               <div v-if="isModified(row.key)" class="mt-2 flex items-center gap-2 text-[11px]">
@@ -112,6 +115,7 @@
 import { ref, computed, onMounted } from "vue";
 import { api } from "../../api.js";
 import { okToast, errToast } from "../../toast.js";
+import SensitiveSettingInput from "../SensitiveSettingInput.vue";
 
 const items = ref([]);
 const dirty = ref({});

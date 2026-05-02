@@ -6,6 +6,10 @@
 //     必须把这个错误转成对终端用户可见的 503 + 提示文案
 //     "服务器未配置邮件发送服务,请联系管理员"。
 //   - 验证码绝对不会被回显到 HTTP 响应体或服务器日志中。
+//
+// 模板美化 (2026-05):
+//   - 验证码邮件改用柔绿玻璃风格,与产品主题一致;邮件顶部显示
+//     "栖枢"产品图标(emerald 渐变方块 + 白色 sparkle),保证品牌识别。
 package email
 
 import (
@@ -108,11 +112,28 @@ type resendRequest struct {
 
 // ─── Templates ────────────────────────────────────────────────────────────
 
+// 验证码邮件模板 — 柔绿玻璃风格,与产品主题一致(详见 web/index.html)。
+//
+// 构成:
+//  1. 顶部品牌图标(emerald 渐变圆角方块 + 白色 sparkle)+ 站点名
+//  2. 白色卡片承载正文与验证码块
+//  3. 验证码块用极浅薄荷底,大号 monospace 数字 + letter-spacing
+//
+// 邮件客户端兼容:
+//   - 使用 <table> 布局而非 flex/grid,Outlook 桌面也能渲染
+//   - 品牌图标的渐变在 Outlook 桌面下会被忽略,所以同时给 td 写
+//     bgcolor + background-color fallback,最差情况也能显示纯品牌色
+//   - 中心 sparkle 是 inline <svg>,Outlook 会忽略,但底色块仍在,
+//     不会破坏整体视觉
 func ComposeVerificationCode(siteName, action, code string, expiryMin int) (subject, htmlBody, textBody string) {
 	if siteName == "" {
 		siteName = "Qi Shu"
 	}
+	if action == "" {
+		action = "完成账号验证"
+	}
 	subject = "[" + siteName + "] 验证码: " + code
+
 	textBody = fmt.Sprintf(`%s
 
 你正在%s%s。请在 %d 分钟内输入以下验证码:
@@ -121,13 +142,43 @@ func ComposeVerificationCode(siteName, action, code string, expiryMin int) (subj
 
 如果你并未发起此操作,请忽略本邮件。`, siteName, siteName, action, expiryMin, code)
 
-	htmlBody = `<!doctype html><html><body style="font-family:system-ui,-apple-system,sans-serif;background:#f7fafc;padding:32px;color:#1a202c">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
-    <h2 style="margin:0 0 8px 0;font-size:18px;color:#2d3748">` + html.EscapeString(siteName) + `</h2>
-    <p style="margin:0 0 16px 0;color:#4a5568">你正在 ` + html.EscapeString(action) + `。请在 ` + fmt.Sprintf("%d", expiryMin) + ` 分钟内输入以下验证码:</p>
-    <div style="font-size:32px;font-weight:600;letter-spacing:8px;text-align:center;background:#edf2f7;padding:20px;border-radius:8px;color:#2d3748;font-family:'JetBrains Mono',monospace">` + html.EscapeString(code) + `</div>
-    <p style="margin:20px 0 0 0;color:#718096;font-size:13px">如果你并未发起此操作,请忽略本邮件。</p>
-  </div>
+	site := html.EscapeString(siteName)
+	act := html.EscapeString(action)
+	c := html.EscapeString(code)
+	htmlBody = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>` + site + ` 验证码</title></head>
+<body style="margin:0;padding:0;background:#F4FBF6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft Yahei',sans-serif;color:#1F3B2A">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4FBF6">
+  <tr><td align="center" style="padding:40px 16px">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%">
+      <tr><td align="center" style="padding-bottom:20px">` + brandIconHTML(56) + `</td></tr>
+      <tr><td align="center" style="padding:0 0 28px 0">
+        <div style="font-size:18px;font-weight:600;letter-spacing:0.5px;color:#0F4A33">` + site + `</div>
+      </td></tr>
+      <tr><td style="background:#FFFFFF;border:1px solid rgba(15,36,25,0.08);border-radius:18px;padding:36px 36px 32px 36px;box-shadow:0 12px 32px -16px rgba(15,36,25,0.10)">
+        <div style="font-size:15px;line-height:1.7;color:#1F3B2A;margin:0 0 8px 0">你好,</div>
+        <div style="font-size:15px;line-height:1.7;color:#1F3B2A;margin:0 0 22px 0">你正在 <strong style="color:#047857">` + site + `</strong> ` + act + `。请在 <strong>` + fmt.Sprintf("%d", expiryMin) + ` 分钟</strong>内输入以下验证码完成验证:</div>
+        <div style="background:linear-gradient(180deg,#ECFDF5 0%,#F4FBF6 100%);background-color:#ECFDF5;border:1px solid rgba(16,185,129,0.25);border-radius:14px;padding:24px;text-align:center">
+          <div style="font-family:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;font-size:34px;font-weight:600;letter-spacing:10px;color:#064E3B;line-height:1">` + c + `</div>
+          <div style="font-size:11px;color:#6B7C73;margin-top:10px;letter-spacing:0.5px">VERIFICATION CODE</div>
+        </div>
+        <div style="font-size:13px;line-height:1.7;color:#6B7C73;margin:22px 0 0 0">为了你的账号安全,请勿向任何人转发此验证码。如果你并未发起此操作,可放心忽略本邮件,你的账号不会受到任何影响。</div>
+      </td></tr>
+      <tr><td align="center" style="padding:20px 8px 0 8px">
+        <div style="font-size:12px;color:#94A39A;line-height:1.6">本邮件由系统自动发送,请勿直接回复。<br>© ` + site + `</div>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
 </body></html>`
 	return subject, htmlBody, textBody
+}
+
+// brandIconHTML 渲染品牌图标 — emerald 渐变圆角方块 + 中心白色 sparkle,
+// 用 <table bgcolor=...><svg/></table> 双层兜底,Outlook 桌面忽略 SVG 时
+// 仍能显示纯品牌色块。
+func brandIconHTML(size int) string {
+	radius := size / 4
+	starSize := int(float64(size) * 0.62)
+	return fmt.Sprintf(`<table role="presentation" align="center" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;border-collapse:separate"><tr><td bgcolor="#10B981" width="%d" height="%d" align="center" valign="middle" style="width:%dpx;height:%dpx;background:linear-gradient(135deg,#34D399 0%%,#10B981 55%%,#047857 100%%);background-color:#10B981;border-radius:%dpx;text-align:center;vertical-align:middle;line-height:0;box-shadow:0 6px 18px -6px rgba(16,185,129,0.55)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="%d" height="%d" style="display:inline-block;vertical-align:middle" aria-hidden="true"><path d="M32 18 L34 30 L46 32 L34 34 L32 46 L30 34 L18 32 L30 30 Z" fill="#ffffff"/></svg></td></tr></table>`,
+		size, size, size, size, radius, starSize, starSize)
 }
