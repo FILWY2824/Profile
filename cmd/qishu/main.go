@@ -240,9 +240,11 @@ func run() error {
 		Settings: store, Clients: oauthClients, Codes: oauthCodes,
 		Tokens: oauthTokens, Grants: oauthGrants,
 		Users: users, ActivityLog: activityLog,
+		Signer: signer, Cfg: cfg,
 	}
 	oauthH.RegisterPublic(api.Group("/oauth"))
 	oauthH.RegisterAuthenticated(api.Group("/oauth", appmw.MustAuth))
+	oauthH.RegisterDiscovery(e)
 
 	(&handler.AccountGrantsHandler{
 		Grants: oauthGrants, Tokens: oauthTokens, Audit: activityLog,

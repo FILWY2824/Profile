@@ -20,9 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 
 	"github.com/qishu/profile/internal/auth"
+	"github.com/qishu/profile/internal/config"
 	"github.com/qishu/profile/internal/middleware"
 	"github.com/qishu/profile/internal/model"
 	"github.com/qishu/profile/internal/repository"
@@ -39,6 +41,8 @@ type OAuthHandler struct {
 	Grants      *repository.OAuthGrantRepo
 	Users       *repository.UserRepo
 	ActivityLog *repository.ActivityLogRepo
+	Signer      *auth.Signer
+	Cfg         *config.Config
 }
 
 func (h *OAuthHandler) RegisterPublic(g *echo.Group) {
@@ -47,6 +51,32 @@ func (h *OAuthHandler) RegisterPublic(g *echo.Group) {
 	g.GET("/userinfo", h.userinfo)
 	g.POST("/introspect", h.introspect)
 	g.POST("/revoke", h.revoke)
+}
+
+// RegisterDiscovery 注册 OIDC Discovery 端点,必须挂载在根路由上
+// (即 /.well-known/openid-configuration)。
+func (h *OAuthHandler) RegisterDiscovery(e *echo.Echo) {
+	e.GET("/.well-known/openid-configuration", h.openIDConfiguration)
+}
+
+func (h *OAuthHandler) openIDConfiguration(c echo.Context) error {
+	issuer := strings.TrimRight(h.Cfg.SiteURL, "/")
+	return c.JSON(http.StatusOK, map[string]any{
+		"issuer":                 issuer,
+		"authorization_endpoint": issuer + "/api/oauth/authorize",
+		"token_endpoint":         issuer + "/api/oauth/token",
+		"userinfo_endpoint":      issuer + "/api/oauth/userinfo",
+		"introspection_endpoint": issuer + "/api/oauth/introspect",
+		"revocation_endpoint":    issuer + "/api/oauth/revoke",
+		"response_types_supported":             []string{"code"},
+		"grant_types_supported":                []string{"authorization_code", "refresh_token"},
+		"subject_types_supported":              []string{"public"},
+		"id_token_signing_alg_values_supported": []string{"HS256"},
+		"scopes_supported":                     []string{"openid", "profile", "email"},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
+		"claims_supported":                     []string{"sub", "name", "preferred_username", "email", "email_verified", "picture"},
+		"code_challenge_methods_supported":     []string{"S256"},
+	})
 }
 
 func (h *OAuthHandler) RegisterAuthenticated(g *echo.Group) {
@@ -397,7 +427,24 @@ func (h *OAuthHandler) tokenAuthorizationCode(c echo.Context, client *repository
 	}
 	_ = h.Grants.UpdateLastUsed(code.UserID, client.ClientID)
 
-	return c.JSON(http.StatusOK, tokenResponseWithPlain(access, refresh, tok.Scope, accessExpiry))
+	resp := tokenResponseWithPlain(access, refresh, tok.Scope, accessExpiry)
+
+	// 当 scope 包含 openid 时,按 OIDC Core 规范签发 id_token,使第三方应用
+	// 能直接从 JWT 中获取用户真实邮箱、名称等身份信息。
+	codeScopes := parseScopeList(code.Scope)
+	for _, s := range codeScopes {
+		if s == "openid" {
+			u, uerr := h.Users.FindByID(code.UserID)
+			if uerr == nil {
+				if idToken, serr := h.signIDToken(u, client.ClientID, codeScopes, accessExpiry); serr == nil {
+					resp["id_token"] = idToken
+				}
+			}
+			break
+		}
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // verifyPKCE 只支持 S256。
@@ -461,7 +508,23 @@ func (h *OAuthHandler) tokenRefresh(c echo.Context, client *repository.OAuthClie
 	}
 	_ = h.Grants.UpdateLastUsed(old.UserID, client.ClientID)
 
-	return c.JSON(http.StatusOK, tokenResponseWithPlain(access, newRefresh, tok.Scope, accessExpiry))
+	resp := tokenResponseWithPlain(access, newRefresh, tok.Scope, accessExpiry)
+
+	// refresh 时也签发新的 id_token(如 scope 含 openid)
+	refreshScopes := parseScopeList(old.Scope)
+	for _, s := range refreshScopes {
+		if s == "openid" {
+			u, uerr := h.Users.FindByID(old.UserID)
+			if uerr == nil {
+				if idToken, serr := h.signIDToken(u, client.ClientID, refreshScopes, accessExpiry); serr == nil {
+					resp["id_token"] = idToken
+				}
+			}
+			break
+		}
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 func intToStr(n int) string {
@@ -497,6 +560,58 @@ func tokenResponseWithPlain(access, refresh, scope string, accessExpiry time.Dur
 		out["refresh_token"] = refresh
 	}
 	return out
+}
+
+// OIDCClaims 是 id_token 中的 JWT payload,遵循 OpenID Connect Core 1.0 规范。
+type OIDCClaims struct {
+	Email         string `json:"email,omitempty"`
+	EmailVerified bool   `json:"email_verified,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Username      string `json:"preferred_username,omitempty"`
+	Picture       string `json:"picture,omitempty"`
+	jwt.RegisteredClaims
+}
+
+// signIDToken 为 OpenID Connect 签发 id_token JWT。
+// 只有请求了 openid scope 才会调用。token 内包含 sub(用户唯一 ID)以及
+// 根据 scope 授权的 profile / email 声明,第三方应用从中获取用户真实身份。
+func (h *OAuthHandler) signIDToken(u *model.User, clientID string, scopes []string, accessExpiry time.Duration) (string, error) {
+	now := time.Now()
+	issuer := strings.TrimRight(h.Cfg.SiteURL, "/")
+
+	hasScope := func(s string) bool {
+		for _, x := range scopes {
+			if x == s {
+				return true
+			}
+		}
+		return false
+	}
+
+	claims := OIDCClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   u.ID,
+			Audience:  jwt.ClaimStrings{clientID},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(accessExpiry)),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
+
+	if hasScope("profile") || hasScope("openid") {
+		claims.Name = u.Name
+		claims.Username = u.Name
+	}
+	if hasScope("profile") {
+		claims.Picture = u.Avatar
+	}
+	if hasScope("email") {
+		claims.Email = u.Email
+		claims.EmailVerified = u.EmailVerified
+	}
+
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.Cfg.JWTSecret))
 }
 
 // ─── /userinfo ───────────────────────────────────────────────────────────
