@@ -257,7 +257,7 @@ async function load() {
 
 function openCreate() {
   editing.value = { name: "", clientId: "", description: "", homepageUrl: "", logoUrl: "",
-                    minLevel: 0, redirectUris: [], scopes: ["openid","profile"], status: "active" };
+                    minLevel: 0, redirectUris: [], scopes: ["openid","profile","email"], status: "active" };
   modalOpen.value = true;
 }
 function openEdit(c) { editing.value = { ...c, scopes: [...(c.scopes || [])] }; modalOpen.value = true; }

@@ -16,3 +16,5 @@ coverage.out
 cmd/qishu/web-dist/
 !cmd/qishu/web-dist/.gitkeep
 *.patch
+
+.claude/

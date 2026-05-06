@@ -127,6 +127,22 @@ func (in *oauthClientReq) validate(forCreate bool) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "redirectUri["+intToStr(i)+"] 不是合法的 http(s) URL")
 		}
 	}
+	// 校验 scopes 必须是本服务器支持的合法值，防止无效 scope 写入数据库
+	// 导致 token scope 交集为空或缺失关键 OIDC 声明。
+	for i, s := range in.Scopes {
+		s = strings.TrimSpace(s)
+		in.Scopes[i] = s
+		if s == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "scope 不能为空")
+		}
+		switch s {
+		case "openid", "profile", "email", "offline_access":
+			// ok
+		default:
+			return echo.NewHTTPError(http.StatusBadRequest, "不支持的 scope: "+s)
+		}
+	}
+
 	if in.Status == "" {
 		in.Status = "active"
 	}
