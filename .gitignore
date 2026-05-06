@@ -18,3 +18,4 @@ cmd/qishu/web-dist/
 *.patch
 
 .claude/
+CLAUDE.md

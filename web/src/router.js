@@ -18,7 +18,7 @@ export function parseHash() {
     for (const pair of queryStr.split("&")) {
       if (!pair) continue;
       const [k, v = ""] = pair.split("=");
-      query[decodeURIComponent(k)] = decodeURIComponent(v);
+      query[decodeURIComponent(k)] = decodeURIComponent(v).replace(/\+/g, " ");
     }
   }
   return { path, query };

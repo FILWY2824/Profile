@@ -95,6 +95,10 @@ func randomToken() string {
 }
 
 func parseScopeList(s string) []string {
+	// OAuth scope 用空格分隔，但 URL 编码中空格常被编码为 '+'。
+	// hash router 的 decodeURIComponent 不解码 '+' → 空格，
+	// 所以这里统一把 '+' 替换为空格后再按空白字符分割。
+	s = strings.ReplaceAll(s, "+", " ")
 	parts := strings.Fields(s)
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
